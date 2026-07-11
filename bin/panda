@@ -1,0 +1,23 @@
+#!/usr/bin/env node
+const path = require('path');
+const fs = require('fs');
+
+const distPath = path.join(__dirname, '../dist/cli/commander.js');
+
+if (fs.existsSync(distPath)) {
+  require(distPath).runCli(process.argv);
+} else {
+  // Fallback for development where we might run typescript directly via ts-node or tsx
+  try {
+    const tsxPath = require.resolve('tsx');
+    if (tsxPath) {
+      const { spawnSync } = require('child_process');
+      const tsCli = path.join(__dirname, '../src/cli/commander.ts');
+      const result = spawnSync('npx', ['tsx', tsCli, ...process.argv.slice(2)], { stdio: 'inherit', shell: true });
+      process.exit(result.status ?? 0);
+    }
+  } catch (e) {
+    console.error("Error: PANDA CLI is not built. Please run 'npm run build' first.");
+    process.exit(1);
+  }
+}

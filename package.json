@@ -1,0 +1,22 @@
+{
+  "name": "@jatimprovcsirt/panda-node",
+  "version": "0.1.0",
+  "description": "PANDA (Private And Secure Data Access) SDK for Node.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "commander": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
