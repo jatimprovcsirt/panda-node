@@ -14,6 +14,12 @@ describe('TokenValidator Tests', () => {
     expect(() => validateToken(liveToken)).not.toThrow();
   });
 
+  it('should validate live 64-character token successfully', () => {
+    const liveToken64 = 'panda_live_76d08573d453cdbdb4bf5704d13f8f54d57cd3c47c9b4be276d08573d453cdbd';
+    expect(isDemoToken(liveToken64)).toBe(false);
+    expect(() => validateToken(liveToken64)).not.toThrow();
+  });
+
   it('should throw on empty token', () => {
     expect(() => validateToken('')).toThrow(InvalidTokenError);
     expect(() => validateToken('')).toThrow('required to initialize');

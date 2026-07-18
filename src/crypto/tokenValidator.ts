@@ -17,7 +17,7 @@ import { InvalidTokenError } from '../errors';
  * for legitimate-usage inventory — not a cryptographic access-control boundary.
  * See Technical PRD Section 14.2.
  */
-export const TOKEN_PATTERN = /^panda_(demo|live)_[a-f0-9]{48}$/;
+export const TOKEN_PATTERN = /^panda_(demo|live)_([a-f0-9]{48}|[a-f0-9]{64})$/;
 
 /**
  * The static demo token shipped in .env.example and documentation.
@@ -45,7 +45,7 @@ export function validateToken(token: string): void {
   if (!TOKEN_PATTERN.test(token)) {
     throw new InvalidTokenError(
       "The provided token does not match the expected format.\n" +
-      "Expected: panda_(demo|live)_<48 hex characters>\n" +
+      "Expected: panda_(demo|live)_<48 or 64 hex characters>\n" +
       `Got: ${token.substring(0, 20)}${token.length > 20 ? '...' : ''}`
     );
   }
