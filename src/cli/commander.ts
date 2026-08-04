@@ -20,11 +20,11 @@ export function runCli(argv: string[]) {
     .description('Initialize local PANDA master key')
     .option('-k, --kid <type>', 'Key Identifier', 'default-key')
     .option('-t, --token <type>', 'Per-application access token (falls back to PANDA_ACCESS_TOKEN env var)')
-    .action((options) => {
+    .action(async (options) => {
       const token = options.token || process.env.PANDA_ACCESS_TOKEN;
 
       try {
-        validateToken(token || '');
+        await validateToken(token || '');
       } catch (err: any) {
         console.error(`Token gate failed: ${err.message}`);
         process.exit(1);
@@ -35,7 +35,7 @@ export function runCli(argv: string[]) {
         console.warn("Please register your application at the PANDA portal to obtain a per-application live token.");
       }
 
-      console.log("✓ token gate passed (format check, pre-portal — Section 14.2)");
+      console.log("✓ token gate passed");
 
       const kid = options.kid;
       const normalizedKid = kid.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();

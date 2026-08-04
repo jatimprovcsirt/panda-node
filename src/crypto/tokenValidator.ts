@@ -1,14 +1,109 @@
 import { InvalidTokenError } from '../errors';
 
 /**
+ * The production portal validation endpoint.
+ */
+const DEFAULT_VALIDATION_URL = 'https://csirt.jatimprov.go.id/panda/api/v1/tokens/validate';
+
+/**
+ * Get the validation URL from environment or default.
+ */
+function getValidationURL(): string {
+  return process.env.PANDA_VALIDATION_URL || DEFAULT_VALIDATION_URL;
+}
+
+/**
+ * Check if online validation should be skipped (test mode).
+ */
+function shouldSkipOnlineValidation(): boolean {
+  return process.env.PANDA_SKIP_ONLINE_VALIDATION === '1';
+}
+
+/**
+ * Response interface from the portal validation endpoint.
+ */
+interface ValidateTokenResponse {
+  valid: boolean;
+  applicationId?: string;
+  organizationId?: string;
+  reason?: 'invalid' | 'revoked' | 'already_activated';
+}
+
+/**
+ * Request payload for token validation.
+ */
+interface ValidateTokenRequest {
+  token: string;
+}
+
+/**
+ * Performs a synchronous HTTPS call to validate the token against the PANDA portal.
+ * This is blocking and fail-closed.
+ *
+ * @throws InvalidTokenError if validation fails for any reason.
+ */
+async function validateTokenOnline(token: string): Promise<void> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(getValidationURL(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ token } as ValidateTokenRequest),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new InvalidTokenError(
+        `PANDA portal returned unexpected status code ${response.status}. Please try again later.`
+      );
+    }
+
+    const result: ValidateTokenResponse = await response.json();
+
+    if (!result.valid) {
+      switch (result.reason) {
+        case 'revoked':
+          throw new InvalidTokenError(
+            'The provided token has been revoked by the portal administrator.'
+          );
+        case 'already_activated':
+          throw new InvalidTokenError(
+            'The provided token has already been used. Each token can only be activated once.'
+          );
+        default:
+          throw new InvalidTokenError(
+            'The provided token is invalid or not recognized by the PANDA portal.'
+          );
+      }
+    }
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new InvalidTokenError(
+        'PANDA portal validation timed out. Unable to reach the PANDA portal for token validation. Please check your network connection and try again.'
+      );
+    }
+    if (error instanceof InvalidTokenError) {
+      throw error;
+    }
+    throw new InvalidTokenError(
+      'Unable to reach the PANDA portal for token validation. Please check your network connection and try again.'
+    );
+  }
+}
+
+/**
  * Validates PANDA access tokens for the init-time token gate (FR-28/FR-29).
  *
- * Token validation is phase-dependent:
- * - Pre-portal (current): local format check only — the token must match
- *   the expected shape (panda_demo_ or panda_live_ prefix + 48 hex chars).
- * - Post-portal (Phase 6+): a synchronous HTTPS call to the portal's
- *   validation endpoint will be added here. The format check remains as a
- *   fast pre-flight; the live call is the authoritative check.
+ * Token validation behavior:
+ * - Local format check is performed first (fast pre-flight).
+ * - The demo token skips all online validation - no HTTP call is ever made.
+ * - All other tokens require a successful portal validation check.
  *
  * This validator is used ONLY by the `init` CLI command. It is NOT used by
  * encrypt/decrypt/mask operations, which have zero portal dependency (FR-29).
@@ -27,12 +122,11 @@ export const DEMO_TOKEN = 'panda_demo_76d08573d453cdbdb4bf5704d13f8f54d57cd3c47c
 /**
  * Validate the given access token.
  *
- * Pre-portal: performs a local format check only.
- * Post-portal: will additionally call the portal validation endpoint.
+ * Performs a local format check followed by portal validation (except for demo token).
  *
- * @throws InvalidTokenError if the token is missing, empty, or malformed.
+ * @throws InvalidTokenError if the token is missing, empty, malformed, or fails portal validation.
  */
-export function validateToken(token: string): void {
+export async function validateToken(token: string): Promise<void> {
   if (!token) {
     throw new InvalidTokenError(
       "A valid PANDA access token is required to initialize a new application.\n" +
@@ -50,11 +144,19 @@ export function validateToken(token: string): void {
     );
   }
 
-  // Pre-portal phase: format check is sufficient (Technical PRD Section 14.2).
-  // Post-portal phase (Phase 6+): add live HTTPS validation call here.
-  // The call would be blocking and fail-closed — if it fails, init refuses
-  // to generate a key. This is the one exception to the SDK's fail-silent
-  // portal interaction policy.
+  // Demo token skips all online validation - no HTTP call is ever made.
+  if (isDemoToken(token)) {
+    return;
+  }
+
+  // Test mode: skip online validation when PANDA_SKIP_ONLINE_VALIDATION=1
+  if (shouldSkipOnlineValidation()) {
+    return;
+  }
+
+  // For non-demo tokens, perform online validation.
+  // This is blocking and fail-closed — if it fails, init refuses to generate a key.
+  await validateTokenOnline(token);
 }
 
 /**

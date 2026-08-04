@@ -1,8 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { validateToken, isDemoToken, DEMO_TOKEN } from '../src/crypto/tokenValidator';
 import { InvalidTokenError } from '../src/errors';
 
 describe('TokenValidator Tests', () => {
+  beforeEach(() => {
+    // Set test mode to skip online validation during unit tests
+    process.env.PANDA_SKIP_ONLINE_VALIDATION = '1';
+  });
+
+  afterEach(() => {
+    delete process.env.PANDA_SKIP_ONLINE_VALIDATION;
+  });
   it('should validate demo token successfully', () => {
     expect(isDemoToken(DEMO_TOKEN)).toBe(true);
     expect(() => validateToken(DEMO_TOKEN)).not.toThrow();
