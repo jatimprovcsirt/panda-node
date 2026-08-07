@@ -1,6 +1,6 @@
 {
   "name": "@jatimprovcsirt/panda-node",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jatimprovcsirt/panda-node.git"
@@ -8,8 +8,12 @@
   "description": "PANDA (Private And Secure Data Access) SDK for Node.js",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "panda": "./dist/cli/index.js"
+  },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "test": "vitest run"
   },
   "dependencies": {
@@ -22,5 +26,10 @@
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
 }
