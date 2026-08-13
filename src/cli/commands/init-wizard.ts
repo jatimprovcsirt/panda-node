@@ -64,7 +64,33 @@ export async function runInitWizard(): Promise<void> {
       credentials.provider = 'vault';
       console.log('\nConfiguring HashiCorp Vault...');
       credentials.vaultUrl = await question('Vault URL [default: http://127.0.0.1:8200]: ') || 'http://127.0.0.1:8200';
-      credentials.vaultToken = await question('Vault Token: ');
+
+      // Authentication method selection
+      console.log('\nSelect Vault authentication method:');
+      console.log('  1. AppRole (Recommended - Auto-renewal, production-ready)');
+      console.log('  2. Token (Advanced - Manual renewal)');
+      const authChoice = await question('Choose method [default: 1]: ') || '1';
+
+      if (authChoice === '1') {
+        // AppRole authentication
+        credentials.vaultAuthMethod = 'approle';
+        console.log('\nUsing AppRole authentication (auto-renewal enabled)');
+        credentials.vaultRoleId = await question('Role ID: ');
+        credentials.vaultSecretId = await question('Secret ID: ');
+
+        // Optional: Token TTL
+        console.log('\nToken TTL (Optional)');
+        console.log('  Token lifetime before auto-renewal. Default: 3600s (1 hour)');
+        console.log('  Press Enter to use default, or enter custom value (300-86400 seconds)');
+        const tokenTTL = await question('Token TTL in seconds [default: 3600]: ') || '3600';
+        credentials.vaultTokenTTL = tokenTTL;
+      } else {
+        // Token authentication
+        credentials.vaultAuthMethod = 'token';
+        console.log('\nUsing Token authentication (manual renewal required)');
+        credentials.vaultToken = await question('Vault Token: ');
+      }
+
       credentials.vaultMount = await question('Mount path [default: secret]: ') || 'secret';
       break;
 

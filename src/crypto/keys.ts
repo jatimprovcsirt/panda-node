@@ -7,7 +7,6 @@ export interface KeyProvider {
 }
 
 export class LocalKeyProvider implements KeyProvider {
-  private keys: Map<string, Buffer> = new Map();
 
   constructor(initialKeys: Record<string, Buffer> = {}) {
     for (const [kid, key] of Object.entries(initialKeys)) {
@@ -44,27 +43,185 @@ export class LocalKeyProvider implements KeyProvider {
   }
 }
 
-export class VaultKeyProvider implements KeyProvider {
-  private cache: Map<string, Buffer> = new Map();
-  private vaultUrl: string;
-  private vaultToken: string;
-  private mountPath: string;
+/**
+ * Configuration options for VaultKeyProvider
+ */
+export interface VaultConfig {
+  /** Vault server URL (e.g., http://localhost:8200) */
+  vaultUrl: string;
+  /** Vault token (for token-based auth) OR AppRole Role ID */
+  vaultToken?: string;
+  /** KV v2 secrets engine mount path (default: 'secret') */
+  mountPath?: string;
+  /** Vault namespace (optional, for Enterprise) */
+  namespace?: string;
 
-  constructor(vaultUrl: string, vaultToken: string, mountPath: string = 'secret') {
-    this.vaultUrl = vaultUrl.replace(/\/$/, '');
-    this.vaultToken = vaultToken;
-    this.mountPath = mountPath.replace(/^\/|\/$/g, '');
+  // AppRole authentication (alternative to token-based)
+  /** AppRole Role ID (for AppRole authentication) */
+  roleId?: string;
+  /** AppRole Secret ID (for AppRole authentication) */
+  secretId?: string;
+  /** Auth method: 'token' or 'approle' (default: 'token') */
+  authMethod?: 'token' | 'approle';
+  /** Token TTL in seconds (for AppRole token renewal, default: 3600) */
+  tokenTTL?: number;
+  /** Key cache TTL in seconds (default: 300) */
+  cacheTTL?: number;
+}
+
+/**
+ * VaultKeyProvider fetches encryption keys from HashiCorp Vault KV v2
+ *
+ * Supports two authentication methods:
+ * 1. Token-based authentication (vaultToken)
+ * 2. AppRole authentication (roleId + secretId with automatic token renewal)
+ *
+ * Keys are cached in memory with a configurable TTL to reduce API calls.
+ */
+export class VaultKeyProvider implements KeyProvider {
+  private cache: Map<string, { key: Buffer; expires: number }> = new Map();
+  private config: Required<Pick<VaultConfig, 'vaultUrl' | 'mountPath' | 'namespace' | 'authMethod' | 'tokenTTL' | 'cacheTTL'>> & VaultConfig;
+
+  // Token-based auth
+  private vaultToken?: string;
+
+  // AppRole-based auth
+  private roleId?: string;
+  private secretId?: string;
+  private currentToken?: string;
+  private tokenExpires: number = 0;
+
+  constructor(config: VaultConfig) {
+    this.config = {
+      vaultUrl: config.vaultUrl.replace(/\/$/, ''),
+      vaultToken: config.vaultToken,
+      mountPath: config.mountPath?.replace(/^\/|\/$/g, '') || 'secret',
+      namespace: config.namespace || '',
+      roleId: config.roleId,
+      secretId: config.secretId,
+      authMethod: config.authMethod || (config.roleId && config.secretId ? 'approle' : 'token'),
+      tokenTTL: config.tokenTTL || 3600, // 1 hour default
+      cacheTTL: config.cacheTTL || 300, // 5 minutes default
+    };
+
+    this.vaultToken = this.config.vaultToken;
+    this.roleId = this.config.roleId;
+    this.secretId = this.config.secretId;
+
+    // Validate configuration based on auth method
+    if (this.config.authMethod === 'token' && !this.vaultToken) {
+      throw new Error('VaultKeyProvider with token auth requires vaultToken');
+    }
+    if (this.config.authMethod === 'approle' && (!this.roleId || !this.secretId)) {
+      throw new Error('VaultKeyProvider with AppRole auth requires roleId and secretId');
+    }
+  }
+
+  /**
+   * Ensures we have a valid Vault token
+   * For AppRole: fetches/renews token before expiry
+   * For Token: uses provided token
+   */
+  private async ensureToken(): Promise<string> {
+    // If using token-based auth, use the provided token
+    if (this.config.authMethod === 'token') {
+      return this.vaultToken!;
+    }
+
+    // If using AppRole, check if we need to fetch/renew token
+    if (this.currentToken && Date.now() < this.tokenExpires) {
+      return this.currentToken;
+    }
+
+    // Fetch new AppRole token
+    return this.fetchAppRoleToken();
+  }
+
+  /**
+   * Fetches a new Vault token using AppRole authentication
+   */
+  private async fetchAppRoleToken(): Promise<string> {
+    const authUrl = `${this.config.vaultUrl}/v1/auth/approle/login`;
+    const payload = {
+      role_id: this.roleId,
+      secret_id: this.secretId
+    };
+
+    return new Promise((resolve, reject) => {
+      const client = authUrl.startsWith('https') ? https : http;
+
+      const options = {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        timeout: 10000,
+        rejectUnauthorized: process.env.PANDA_VAULT_INSECURE !== '1'
+      };
+
+      const req = client.request(authUrl, options, (res) => {
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new KeyNotFoundError(`AppRole authentication failed (HTTP ${res.statusCode}): ${body}`));
+            return;
+          }
+
+          try {
+            const data = JSON.parse(body);
+            this.currentToken = data.auth?.client_token;
+            if (!this.currentToken) {
+              reject(new KeyNotFoundError(`No client_token in AppRole response`));
+              return;
+            }
+
+            // Set token expiry (use token TTL if provided, otherwise default to lease duration)
+            const leaseDuration = data.auth?.lease_duration || this.config.tokenTTL;
+            // Refresh 5 minutes before expiry
+            this.tokenExpires = Date.now() + ((leaseDuration - 300) * 1000);
+
+            resolve(this.currentToken);
+          } catch (e) {
+            reject(new KeyNotFoundError(`Failed to parse AppRole response: ${e}`));
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        reject(new KeyNotFoundError(`AppRole request failed: ${err.message}`));
+      });
+
+      req.setTimeout(10000, () => {
+        req.destroy();
+        reject(new KeyNotFoundError(`AppRole request timeout`));
+      });
+
+      req.write(JSON.stringify(payload));
+      req.end();
+    });
   }
 
   async getKey(kid: string): Promise<Buffer> {
-    if (this.cache.has(kid)) {
-      return this.cache.get(kid)!;
+    // Check cache first (with TTL)
+    const cached = this.cache.get(kid);
+    if (cached && cached.expires > Date.now()) {
+      return cached.key;
     }
 
-    const urlStr = `${this.vaultUrl}/v1/${this.mountPath}/data/${kid}`;
+    // Ensure we have a valid token
+    const token = await this.ensureToken();
+
+    // Build the Vault API URL for KV v2
+    let urlStr = `${this.config.vaultUrl}/v1/${this.config.mountPath}/data/${kid}`;
+    if (this.config.namespace) {
+      urlStr = `${this.config.vaultUrl}/v1/${this.config.namespace}/${this.config.mountPath}/data/${kid}`;
+    }
+
     const options = {
       headers: {
-        'X-Vault-Token': this.vaultToken,
+        'X-Vault-Token': token,
         'Accept': 'application/json'
       },
       timeout: 5000,
@@ -77,8 +234,12 @@ export class VaultKeyProvider implements KeyProvider {
         let body = '';
         res.on('data', (chunk) => { body += chunk; });
         res.on('end', () => {
+          if (res.statusCode === 404) {
+            reject(new KeyNotFoundError(`Key '${kid}' not found in Vault`));
+            return;
+          }
           if (res.statusCode !== 200) {
-            reject(new KeyNotFoundError(`Could not retrieve key '${kid}' from Vault (HTTP status code: ${res.statusCode})`));
+            reject(new KeyNotFoundError(`Could not retrieve key '${kid}' from Vault (HTTP status code: ${res.statusCode}): ${body}`));
             return;
           }
 
@@ -96,10 +257,15 @@ export class VaultKeyProvider implements KeyProvider {
               return;
             }
 
-            this.cache.set(kid, keyBuf);
+            // Cache the key with TTL
+            this.cache.set(kid, {
+              key: keyBuf,
+              expires: Date.now() + (this.config.cacheTTL * 1000)
+            });
+
             resolve(keyBuf);
           } catch (e) {
-            reject(new KeyNotFoundError(`Failed to parse Vault response for key '${kid}'.`));
+            reject(new KeyNotFoundError(`Failed to parse Vault response for key '${kid}': ${e}`));
           }
         });
       }).on('error', (err) => {
@@ -314,14 +480,36 @@ export function createKeyProvider(
       return new LocalKeyProvider(config?.initialKeys);
 
     case 'vault':
-      if (!config?.vaultUrl || !config?.vaultToken) {
-        throw new Error('VaultKeyProvider requires vaultUrl and vaultToken');
+      if (!config?.vaultUrl) {
+        throw new Error('VaultKeyProvider requires vaultUrl');
       }
-      return new VaultKeyProvider(
-        config.vaultUrl,
-        config.vaultToken,
-        config.mountPath ?? 'secret'
-      );
+
+      // Support both old constructor (vaultUrl, vaultToken, mountPath)
+      // and new config-based approach
+      if (config.vaultToken && !config.roleId) {
+        // Old-style token-based auth
+        return new VaultKeyProvider({
+          vaultUrl: config.vaultUrl,
+          vaultToken: config.vaultToken,
+          mountPath: config.mountPath ?? 'secret',
+          namespace: config.namespace,
+          authMethod: 'token',
+          cacheTTL: config.cacheTTL
+        });
+      }
+
+      // New-style config (supports AppRole)
+      return new VaultKeyProvider({
+        vaultUrl: config.vaultUrl,
+        vaultToken: config.vaultToken,
+        mountPath: config.mountPath ?? 'secret',
+        namespace: config.namespace,
+        roleId: config.roleId,
+        secretId: config.secretId,
+        authMethod: config.authMethod,
+        tokenTTL: config.tokenTTL,
+        cacheTTL: config.cacheTTL
+      });
 
     case 'infisical':
       if (!config?.siteUrl || !config?.clientId || !config?.clientSecret ||

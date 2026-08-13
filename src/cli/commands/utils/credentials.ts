@@ -62,7 +62,11 @@ export interface PandaCredentials {
   // Vault options
   vaultUrl?: string;
   vaultToken?: string;
+  vaultRoleId?: string;
+  vaultSecretId?: string;
+  vaultAuthMethod?: 'approle' | 'token';
   vaultMount?: string;
+  vaultTokenTTL?: string;  // Token TTL in seconds (default: 3600)
   // Infisical options
   infisicalSiteUrl?: string;
   infisicalClientId?: string;

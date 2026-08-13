@@ -1,17 +1,13 @@
 import { PandaService } from './service';
 import { FieldCipher } from '../../crypto/cipher';
-import { KeyProvider, createKeyProvider } from '../../crypto/keys';
+import { KeyProvider, createKeyProvider, type VaultConfig } from '../../crypto/keys';
 import type { InfisicalConfig } from '../../crypto/keys';
 
 export interface PandaModuleOptions {
   defaultKid?: string;
   providerToken?: string;
   keyProvider?: 'local' | 'vault' | 'infisical';
-  vault?: {
-    url: string;
-    token: string;
-    mountPath?: string;
-  };
+  vault?: VaultConfig;
   infisical?: InfisicalConfig;
 }
 

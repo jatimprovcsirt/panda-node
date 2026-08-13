@@ -60,8 +60,17 @@ export async function runStatusCommand(): Promise<number> {
     case 'vault':
       console.log('  Type: HashiCorp Vault');
       console.log(`  URL: ${credentials.vaultUrl}`);
+      console.log(`  Auth: ${credentials.vaultAuthMethod || 'token'}`);
+      if (credentials.vaultAuthMethod === 'approle') {
+        console.log(`  Role ID: ${credentials.vaultRoleId ? '***configured***' : 'not set'}`);
+        console.log(`  Secret ID: ${credentials.vaultSecretId ? '***configured***' : 'not set'}`);
+      } else {
+        console.log(`  Token: ${credentials.vaultToken ? '***configured***' : 'not set'}`);
+      }
+      if (credentials.vaultTokenTTL) {
+        console.log(`  Token TTL: ${credentials.vaultTokenTTL} seconds`);
+      }
       console.log(`  Mount: ${credentials.vaultMount || 'secret'}`);
-      console.log(`  Token: ${credentials.vaultToken ? '***configured***' : 'not set'}`);
       break;
 
     case 'infisical':

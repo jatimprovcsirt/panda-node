@@ -9,6 +9,32 @@
 - Node.js ≥ 18 (LTS)
 - npm / yarn / pnpm
 
+## Key Provider Options
+
+PANDA SDK supports three key provider options for storing encryption keys:
+
+### 1. LocalKeyProvider (Development Only)
+- **Best for**: Development, testing, quick prototypes
+- **Setup**: Zero configuration required
+- **Security**: Keys stored in environment variables (NOT production-ready)
+- **Cost**: Free
+
+### 2. InfisicalKeyProvider (Recommended for Production)
+- **Best for**: Startups, SMBs, teams new to secret management
+- **Setup**: Sign up at https://infisical.com (free tier available)
+- **Security**: Cloud or self-hosted with Machine Identity authentication
+- **Cost**: Free tier available, paid tiers for advanced features
+
+### 3. VaultKeyProvider (Enterprise Option)
+- **Best for**: Enterprise environments with existing Vault infrastructure
+- **Setup**: Self-hosted HashiCorp Vault with KV v2
+- **Security**: Industry-standard secret management
+- **Cost**: Self-hosted free, paid enterprise support available
+
+> **Important**: For production deployments, always use InfisicalKeyProvider or VaultKeyProvider. Never use LocalKeyProvider in production.
+
+See [Key Provider Comparison](../../docs/key-provider-comparison.md) for detailed comparison.
+
 ## Installation
 
 ```bash
@@ -89,6 +115,73 @@ npx panda rotate-key --new-kid opd-dukcapil-key-2
 # Hapus kunci secara permanen (HATI-HATI: data yang dienkripsi dengan kunci ini tidak bisa didekripsi lagi!)
 npx panda shred opd-dukcapil-key-old
 ```
+
+---
+
+## Infisical Setup (Production-Ready Alternative)
+
+Untuk deployment produksi, disarankan menggunakan Infisical sebagai KeyProvider alih-alih LocalKeyProvider (env vars).
+
+### Setup Infisical Cloud
+
+1. **Buat Akun Infisical**
+   - Daftar di https://infisical.com (free tier tersedia)
+   - Buat project baru
+   - Buat environment (dev, staging, prod)
+
+2. **Buat Machine Identity**
+   - Buka "Machine Identities" di project Anda
+   - Klik "Create Machine Identity"
+   - Pilih environment yang diakses
+   - Copy Client ID dan Client Secret
+
+3. **Upload Kunci Enkripsi**
+   - Buka "Secrets" di project
+   - Pilih environment
+   - Klik "Add Secret"
+   - Secret Key: `nik-key` (atau KID Anda)
+   - Secret Value: `<base64-encoded-32-byte-key>` (generate dengan `openssl rand -base64 32`)
+
+4. **Konfigurasi Aplikasi**
+   ```bash
+   # .env
+   PANDA_KEY_PROVIDER_DRIVER=infisical
+   PANDA_INFISICAL_SITE_URL=https://app.infisical.com
+   PANDA_INFISICAL_CLIENT_ID=<client-id>
+   PANDA_INFISICAL_CLIENT_SECRET=<client-secret>
+   PANDA_INFISICAL_PROJECT_ID=<project-id>
+   PANDA_INFISICAL_ENVIRONMENT=dev
+   PANDA_INFISICAL_CACHE_TTL=300
+   ```
+
+### Menggunakan InfisicalKeyProvider dalam Kode
+
+```typescript
+import { InfisicalKeyProvider, FieldCipher } from '@jatimprovcsirt/panda-node';
+
+// Baca dari environment variables atau config
+const keyProvider = new InfisicalKeyProvider({
+  siteUrl: process.env.PANDA_INFISICAL_SITE_URL!,
+  clientId: process.env.PANDA_INFISICAL_CLIENT_ID!,
+  clientSecret: process.env.PANDA_INFISICAL_CLIENT_SECRET!,
+  projectId: process.env.PANDA_INFISICAL_PROJECT_ID!,
+  environment: process.env.PANDA_INFISICAL_ENVIRONMENT!,
+  cacheTTL: 300, // optional, default 300 seconds
+});
+
+const cipher = new FieldCipher(keyProvider);
+
+// Sisa kode tetap sama
+const encrypted = await cipher.encrypt("3201012501990001", "nik-key");
+```
+
+**Keuntungan Infisical:**
+- ✅ Production-ready dengan auto-renewal (tanpa token expiration)
+- ✅ UI modern yang mudah digunakan
+- ✅ Free tier untuk project kecil
+- ✅ Cloud atau self-hosted options
+
+Untuk setup lengkap Infisical, lihat [Infisical Setup Guide](../../docs/infisical-setup-guide.md).
 
 ---
 
