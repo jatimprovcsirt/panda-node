@@ -6,6 +6,146 @@ import { LocalKeyProvider } from '../crypto/keys';
 import { FieldCipher } from '../crypto/cipher';
 import { Envelope } from '../envelope/envelope';
 import { validateToken, isDemoToken, isLocalEnvironment } from '../crypto/tokenValidator';
+import { runInitWizard } from './commands/init-wizard';
+import { runGenerateCommand } from './commands/generate';
+import { runStatusCommand } from './commands/status';
+import { runConfigCommand } from './commands/config';
+import { runDeinitCommand } from './commands/deinit';
+
+/**
+ * Quick init mode (non-interactive setup)
+ */
+async function runQuickInit(options: any): Promise<void> {
+  const token = options.token || process.env.PANDA_ACCESS_TOKEN;
+  const provider = options.provider || 'local';
+
+  // Create .panda directory structure first
+  const { createPandaDirectory } = require('./commands/utils/panda-dir');
+  createPandaDirectory();
+
+  try {
+    await validateToken(token || '');
+  } catch (err: any) {
+    console.error(`Token gate failed: ${err.message}`);
+    process.exit(1);
+  }
+
+  if (isDemoToken(token || '') && !isLocalEnvironment()) {
+    console.warn("⚠️ WARNING: You are using the static DEMO TOKEN outside a local development environment.");
+    console.warn("Please register your application at the PANDA portal to obtain a per-application live token.");
+  }
+
+  console.log("✓ token gate passed");
+
+  const kid = options.kid;
+  const credentials: any = {
+    token: token,
+    provider: provider,
+    defaultKid: kid
+  };
+
+  // Provider-specific setup
+  switch (provider) {
+    case 'local':
+      await setupLocalProvider(kid, options);
+      break;
+
+    case 'vault':
+      await setupVaultProvider(kid, options, credentials);
+      break;
+
+    case 'infisical':
+      await setupInfisicalProvider(kid, options, credentials);
+      break;
+
+    default:
+      console.error(`Unknown provider: ${provider}`);
+      process.exit(1);
+  }
+
+  // Save credentials
+  const { writeCredentials } = require('./commands/utils/credentials');
+  writeCredentials(credentials);
+
+  console.log("\n✓ PANDA initialization complete!");
+  console.log(`Provider: ${provider}`);
+  console.log(`Default Key ID: ${kid}`);
+
+  // Exit successfully
+  process.exit(0);
+}
+
+async function setupLocalProvider(kid: string, options: any): Promise<void> {
+  const normalizedKid = kid.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
+  const envVarName = `PANDA_KEY_${normalizedKid}`;
+
+  const keyBytes = crypto.randomBytes(32);
+  const keyBase64 = keyBytes.toString('base64');
+
+  const envPath = path.join(process.cwd(), '.env');
+  const examplePath = path.join(process.cwd(), '.env.example');
+
+  appendEnv(envPath, envVarName, keyBase64);
+  appendEnv(examplePath, envVarName, '');
+  appendEnv(envPath, 'PANDA_DEFAULT_KID', kid);
+  appendEnv(examplePath, 'PANDA_DEFAULT_KID', '');
+
+  console.log("✓ Local provider configured");
+  console.log(`  Generated key for KID: ${kid}`);
+  console.log(`  Variable written to .env: ${envVarName}`);
+  console.log("  Keep this key secret and secure!");
+  console.log("  # From here on, this application never contacts the portal again for");
+  console.log("  # encrypt/decrypt/mask, rotate, or migrate — Section 9, Section 14.");
+}
+
+async function setupVaultProvider(kid: string, options: any, credentials: any): Promise<void> {
+  credentials.vaultUrl = options.vaultUrl || process.env.PANDA_VAULT_URL || 'http://127.0.0.1:8200';
+  credentials.vaultToken = options.vaultToken || process.env.PANDA_VAULT_TOKEN;
+  credentials.vaultMount = options.vaultMount || process.env.PANDA_VAULT_MOUNT_PATH || 'secret';
+
+  console.log("✓ Vault provider configured");
+  console.log(`  URL: ${credentials.vaultUrl}`);
+  console.log(`  Mount: ${credentials.vaultMount}`);
+  console.log(`  Default Key ID: ${kid}`);
+  console.log("  Note: Keys will be retrieved from Vault at runtime.");
+  console.log("  Ensure your secret is stored at: " + credentials.vaultMount + "/" + kid);
+}
+
+async function setupInfisicalProvider(kid: string, options: any, credentials: any): Promise<void> {
+  credentials.infisicalSiteUrl = options.infisicalSiteUrl || process.env.PANDA_INFISICAL_SITE_URL || 'https://app.infisical.com';
+  credentials.infisicalClientId = options.infisicalClientId || process.env.PANDA_INFISICAL_CLIENT_ID;
+  credentials.infisicalClientSecret = options.infisicalClientSecret || process.env.PANDA_INFISICAL_CLIENT_SECRET;
+  credentials.infisicalProjectId = options.infisicalProjectId || process.env.PANDA_INFISICAL_PROJECT_ID;
+  credentials.infisicalEnvironment = options.infisicalEnvironment || process.env.PANDA_INFISICAL_ENVIRONMENT || 'dev';
+  credentials.infisicalCacheTTL = options.infisicalCacheTTL || process.env.PANDA_INFISICAL_CACHE_TTL || '300';
+
+  console.log("✓ Infisical provider configured");
+  console.log(`  Site URL: ${credentials.infisicalSiteUrl}`);
+  console.log(`  Project ID: ${credentials.infisicalProjectId}`);
+  console.log(`  Environment: ${credentials.infisicalEnvironment}`);
+  console.log(`  Default Key ID: ${kid}`);
+  console.log("  Note: Keys will be retrieved from Infisical at runtime.");
+  console.log("  Use 'panda generate' to create keys in Infisical.");
+}
+
+/**
+ * Append environment variable to .env file
+ */
+export function appendEnv(filePath: string, name: string, value: string): void {
+  let content = '';
+  if (fs.existsSync(filePath)) {
+    content = fs.readFileSync(filePath, 'utf8');
+  }
+
+  const regex = new RegExp(`^${name}=.*\\r?\\n?`, 'm');
+  if (regex.test(content)) {
+    content = content.replace(regex, `${name}=${value}\n`);
+  } else {
+    content += `\n${name}=${value}\n`;
+  }
+
+  fs.writeFileSync(filePath, content.trim() + '\n', 'utf8');
+}
 
 export function runCli(argv: string[]) {
   const program = new Command();
@@ -14,48 +154,69 @@ export function runCli(argv: string[]) {
     .description('PANDA CLI Tool for Node.js')
     .version('0.1.0');
 
-  // init command
+  // init command (wizard mode)
   program
     .command('init')
-    .description('Initialize local PANDA master key')
-    .option('-k, --kid <type>', 'Key Identifier', 'default-key')
-    .option('-t, --token <type>', 'Per-application access token (falls back to PANDA_ACCESS_TOKEN env var)')
+    .description('Initialize PANDA with interactive wizard')
+    .option('-k, --kid <type>', 'Key Identifier (quick mode)', 'default-key')
+    .option('-t, --token <type>', 'Per-application access token')
+    .option('-q, --quick', 'Skip wizard, use quick setup with local provider', false)
+    .option('-p, --provider <type>', 'Key provider type: local, vault, or infisical (non-interactive)')
+    .option('--keystore <type>', 'Alias for --provider (non-interactive)')
     .action(async (options) => {
-      const token = options.token || process.env.PANDA_ACCESS_TOKEN;
+      // Determine if non-interactive mode
+      // Non-interactive if: quick flag OR provider/keystore explicitly set OR token provided with kid
+      const isNonInteractive = options.quick ||
+                               options.provider ||
+                               options.keystore ||
+                               (options.token && options.kid && options.kid !== 'default-key');
 
-      try {
-        await validateToken(token || '');
-      } catch (err: any) {
-        console.error(`Token gate failed: ${err.message}`);
-        process.exit(1);
+      if (isNonInteractive) {
+        // Non-interactive mode
+        const provider = options.keystore || options.provider || 'local';
+        await runQuickInit({ ...options, provider });
+      } else {
+        // Wizard mode
+        await runInitWizard();
       }
+    });
 
-      if (isDemoToken(token || '') && !isLocalEnvironment()) {
-        console.warn("⚠️ WARNING: You are using the static DEMO TOKEN outside a local development environment.");
-        console.warn("Please register your application at the PANDA portal to obtain a per-application live token.");
-      }
+  // generate command
+  program
+    .command('generate [kid]')
+    .description('Generate a new encryption key (interactive or specify kid)')
+    .option('-d, --description <text>', 'Key description')
+    .option('-y, --yes', 'Skip confirmation prompts (non-interactive)', false)
+    .option('--keystore <type>', 'Override key provider: local, vault, or infisical')
+    .action(async (kid, options) => {
+      const exitCode = await runGenerateCommand(kid, options);
+      process.exit(exitCode);
+    });
 
-      console.log("✓ token gate passed");
+  // status command
+  program
+    .command('status')
+    .description('Display PANDA configuration and test connectivity')
+    .action(async () => {
+      const exitCode = await runStatusCommand();
+      process.exit(exitCode);
+    });
 
-      const kid = options.kid;
-      const normalizedKid = kid.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
-      const envVarName = `PANDA_KEY_${normalizedKid}`;
+  // config command
+  program
+    .command('config')
+    .description('Display PANDA configuration details')
+    .action(async () => {
+      await runConfigCommand();
+    });
 
-      const keyBytes = crypto.randomBytes(32);
-      const keyBase64 = keyBytes.toString('base64');
-
-      const envPath = path.join(process.cwd(), '.env');
-      const examplePath = path.join(process.cwd(), '.env.example');
-
-      appendEnv(envPath, envVarName, keyBase64);
-      appendEnv(examplePath, envVarName, '');
-
-      console.log("✓ local master key generated, written to .env");
-      console.log(`Generated key for KID: ${kid}`);
-      console.log(`Variable written to .env: ${envVarName}`);
-      console.log("Keep this key secret and secure!");
-      console.log("# From here on, this application never contacts the portal again for");
-      console.log("# encrypt/decrypt/mask, rotate, or migrate — Section 9, Section 14.");
+  // deinit command
+  program
+    .command('deinit')
+    .description('Remove PANDA configuration and .panda directory')
+    .option('-f, --force', 'Skip confirmation prompt', false)
+    .action(async (options) => {
+      await runDeinitCommand(options);
     });
 
   // rotate-key command
@@ -347,20 +508,4 @@ export function runCli(argv: string[]) {
     });
 
   program.parse(argv);
-}
-
-function appendEnv(filePath: string, name: string, value: string): void {
-  let content = '';
-  if (fs.existsSync(filePath)) {
-    content = fs.readFileSync(filePath, 'utf8');
-  }
-
-  const regex = new RegExp(`^${name}=.*\\r?\\n?`, 'm');
-  if (regex.test(content)) {
-    content = content.replace(regex, `${name}=${value}\n`);
-  } else {
-    content += `\n${name}=${value}\n`;
-  }
-
-  fs.writeFileSync(filePath, content.trim() + '\n', 'utf8');
 }

@@ -1,5 +1,5 @@
 export { FieldCipher } from './crypto/cipher';
-export { KeyProvider, LocalKeyProvider, VaultKeyProvider } from './crypto/keys';
+export { KeyProvider, LocalKeyProvider, VaultKeyProvider, InfisicalKeyProvider, InfisicalConfig, createKeyProvider } from './crypto/keys';
 export { Envelope } from './envelope/envelope';
 export { Masker, MaskingConfig } from './masking/masker';
 export { BlindIndexer } from './blindIndex/blindIndex';

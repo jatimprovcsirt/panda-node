@@ -1,12 +1,30 @@
 import { PandaService } from './service';
 import { FieldCipher } from '../../crypto/cipher';
-import { LocalKeyProvider } from '../../crypto/keys';
+import { KeyProvider, createKeyProvider } from '../../crypto/keys';
+import type { InfisicalConfig } from '../../crypto/keys';
+
+export interface PandaModuleOptions {
+  defaultKid?: string;
+  providerToken?: string;
+  keyProvider?: 'local' | 'vault' | 'infisical';
+  vault?: {
+    url: string;
+    token: string;
+    mountPath?: string;
+  };
+  infisical?: InfisicalConfig;
+}
 
 export class PandaModule {
-  static forRoot(config: { defaultKid?: string; providerToken?: string } = {}) {
-    const keyProvider = new LocalKeyProvider();
-    const cipher = new FieldCipher(keyProvider, undefined, undefined, config.providerToken);
+  static forRoot(options: PandaModuleOptions = {}) {
+    const keyProvider = createKeyProvider(
+      options.keyProvider ?? 'local',
+      options.vault ? { ...options.vault } : options.infisical ? { ...options.infisical } : undefined
+    );
+    const cipher = new FieldCipher(keyProvider, undefined, undefined, options.providerToken);
     const service = new PandaService(cipher);
+
+    const keyProviderSymbol = Symbol('KeyProvider');
 
     return {
       module: PandaModule,
@@ -14,9 +32,17 @@ export class PandaModule {
         {
           provide: PandaService,
           useValue: service
+        },
+        {
+          provide: FieldCipher,
+          useValue: cipher
+        },
+        {
+          provide: keyProviderSymbol,
+          useValue: keyProvider
         }
       ],
-      exports: [PandaService]
+      exports: [PandaService, FieldCipher, keyProviderSymbol]
     };
   }
 }
