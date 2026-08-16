@@ -1,6 +1,6 @@
 {
   "name": "@jatimprovcsirt/panda-node",
-  "version": "0.1.4",
+  "version": "0.4.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jatimprovcsirt/panda-node.git"
