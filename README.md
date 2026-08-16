@@ -346,17 +346,153 @@ console.log('Blind index backfill selesai!');
 
 ## 6. Referensi CLI
 
-| Perintah | Memerlukan Token | Deskripsi |
-|---|---|---|
-| `npx panda init --token <token>` | ✅ Ya | Inisialisasi PANDA dengan wizard interaktif untuk KID pertama |
-| `npx panda generate <kid>` | ❌ Tidak | Generate kunci tambahan untuk KID baru (tanpa wizard) |
-| `npx panda status` | ❌ Tidak | Tampilkan status konfigurasi PANDA saat ini |
-| `npx panda config` | ❌ Tidak | Tampilkan detail konfigurasi lengkap |
-| `npx panda deinit` | ❌ Tidak | Hapus konfigurasi PANDA dari proyek |
-| `npx panda rotate-key --new-kid <kid>` | ❌ Tidak | Buat kunci baru secara lokal, set sebagai default aktif |
-| `npx panda shred <kid>` | ❌ Tidak | Hapus kunci secara permanen (irreversible!) |
-| `npx panda migrate <table> <col> <kid>` | ❌ Tidak | Migrasi plaintext → encrypted envelope di database |
-| `npx panda migrate --dry-run <table> <col> <kid>` | ❌ Tidak | Estimasi scope migrasi tanpa mengubah data |
+### Mode Non-Interaktif (Flags untuk CI/CD)
+
+Semua perintah CLI dapat digunakan dalam mode non-interaktif dengan menggunakan flag. Ini sangat berguna untuk:
+
+- **CI/CD pipelines** - Otomatisasi tanpa interaksi pengguna
+- **Docker containers** - Inisialisasi otomatis saat container start
+- **Infrastructure as Code** - Integrasi dengan Terraform, Ansible, dll
+- **Automated testing** - Setup dan teardown otomatis
+
+#### Perintah Init - Mode Non-Interaktif
+
+```bash
+# Quick init dengan Local provider (mode tercepat)
+npx panda init --quick --token <token> --kid default-key
+
+# Init dengan Vault provider (non-interactive)
+npx panda init --token <token> --provider vault \
+  --kid default-key \
+  --vaultUrl http://localhost:8200 \
+  --vaultToken <vault-token> \
+  --vaultMount secret
+
+# Init dengan Infisical provider (non-interactive)
+npx panda init --token <token> --provider infisical \
+  --kid default-key \
+  --infisicalSiteUrl https://app.infisical.com \
+  --infisicalClientId <client-id> \
+  --infisicalClientSecret <client-secret> \
+  --infisicalProjectId <project-id> \
+  --infisicalEnvironment dev
+
+# Init tanpa generate kunci pertama (untuk automation lanjutan)
+npx panda init --quick --token <token> --skip-key-gen
+```
+
+**Flag `init` yang tersedia:**
+
+| Flag | Short | Default | Deskripsi |
+|------|-------|---------|-----------|
+| `--token <value>` | `-t` | - | PANDA access token (atau set `PANDA_ACCESS_TOKEN` env) |
+| `--kid <value>` | `-k` | `default-key` | Key Identifier untuk kunci pertama |
+| `--quick` | `-q` | `false` | Skip wizard, gunakan quick setup dengan local provider |
+| `--provider <type>` | `-p` | `local` | Key provider: `local`, `vault`, atau `infisical` |
+| `--keystore <type>` | - | - | Alias untuk `--provider` |
+| `--skip-key-gen` | - | `false` | Skip generate kunci pertama |
+
+#### Perintah Generate - Mode Non-Interaktif
+
+```bash
+# Generate kunci tanpa konfirmasi (non-interactive)
+npx panda generate my-new-key --yes
+
+# Generate dengan description
+npx panda generate my-new-key --description "Key for NIK encryption"
+
+# Override provider untuk generate command
+npx panda generate my-new-key --keystore vault
+```
+
+**Flag `generate` yang tersedia:**
+
+| Flag | Short | Default | Deskripsi |
+|------|-------|---------|-----------|
+| `--description <text>` | `-d` | - | Deskripsi untuk kunci |
+| `--yes` | `-y` | `false` | Skip konfirmasi prompts (non-interactive) |
+| `--keystore <type>` | - | - | Override key provider: `local`, `vault`, atau `infisical` |
+
+#### Perintah Rotate-Key - Mode Non-Interaktif
+
+```bash
+# Rotasi kunci ke KID baru
+npx panda rotate-key --new-kid new-key-2024
+
+# Rotasi kunci dengan KID custom
+npx panda rotate-key --new-kid production-key-v2
+```
+
+**Flag `rotate-key` yang tersedia:**
+
+| Flag | Short | Default | Deskripsi |
+|------|-------|---------|-----------|
+| `--new-kid <value>` | `-n` | - | **Wajib** - Key Identifier baru untuk rotasi |
+
+#### Perintah Shred - Mode Non-Interaktif
+
+```bash
+# Hapus kunci dengan konfirmasi otomatis (hati-hati!)
+npx panda shred old-deprecated-key --force
+```
+
+**Flag `shred` yang tersedia:**
+
+| Flag | Short | Default | Deskripsi |
+|------|-------|---------|-----------|
+| `--force` | `-f` | `false` | Skip konfirmasi prompt (irreversible!) |
+
+#### Perintah Migrate - Mode Non-Interaktif
+
+```bash
+# Migrasi batch processing dengan flags
+npx panda migrate citizens nik default-key \
+  --batch-size 500 \
+  --delay 200 \
+  --pk id \
+  --dry-run
+
+# Migrasi PostgreSQL
+npx panda migrate citizens nik default-key --batch-size 1000
+
+# Migrasi dengan custom primary key
+npx panda migrate users email email-key --pk uuid
+```
+
+**Flag `migrate` yang tersedia:**
+
+| Flag | Short | Default | Deskripsi |
+|------|-------|---------|-----------|
+| `--batch-size <n>` | `-b` | `100` | Jumlah baris per chunk |
+| `--delay <ms>` | `-d` | `100` | Delay antar chunk (ms) |
+| `--pk <col>` | `-p` | `id` | Nama kolom primary key |
+| `--dry-run` | - | `false` | Estimasi scope tanpa mengubah data |
+
+#### Perintah Deinit - Mode Non-Interaktif
+
+```bash
+# Hapus konfigurasi tanpa prompt
+npx panda deinit --force
+```
+
+**Flag `deinit` yang tersedia:**
+
+| Flag | Short | Default | Deskripsi |
+|------|-------|---------|-----------|
+| `--force` | `-f` | `false` | Skip konfirmasi prompt |
+
+### Tabel Lengkap Referensi CLI
+
+| Perintah | Memerlukan Token | Mode Non-Interaktif | Deskripsi |
+|---|---|:---:|---|
+| `npx panda init --token <token>` | ✅ Ya | ✅ `--quick` atau `--provider` | Inisialisasi PANDA (wizard atau quick mode) |
+| `npx panda generate <kid>` | ❌ Tidak | ✅ `--yes` | Generate kunci tambahan |
+| `npx panda status` | ❌ Tidak | ✅ (default non-interactive) | Tampilkan status konfigurasi |
+| `npx panda config` | ❌ Tidak | ✅ (default non-interactive) | Tampilkan detail konfigurasi lengkap |
+| `npx panda deinit` | ❌ Tidak | ✅ `--force` | Hapus konfigurasi PANDA |
+| `npx panda rotate-key --new-kid <kid>` | ❌ Tidak | ✅ (default non-interactive) | Rotasi kunci ke KID baru |
+| `npx panda shred <kid>` | ❌ Tidak | ✅ `--force` | Hapus kunci permanen |
+| `npx panda migrate <table> <col> <kid>` | ❌ Tidak | ✅ (default non-interactive) | Migrasi plaintext → encrypted |
 
 ---
 
