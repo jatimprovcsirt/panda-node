@@ -7,6 +7,7 @@ export interface KeyProvider {
 }
 
 export class LocalKeyProvider implements KeyProvider {
+  private keys: Map<string, Buffer> = new Map();
 
   constructor(initialKeys: Record<string, Buffer> = {}) {
     for (const [kid, key] of Object.entries(initialKeys)) {
