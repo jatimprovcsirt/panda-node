@@ -1,6 +1,6 @@
 {
   "name": "@jatimprovcsirt/panda-node",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/jatimprovcsirt/panda-node.git"
@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "pretest": "npm run build",
     "prepublishOnly": "npm run build",
     "test": "vitest run"
   },

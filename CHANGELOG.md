@@ -30,7 +30,8 @@ not a date, not the branch.
 
 | Version | Date | What it was |
 |---|---|---|
-| `0.5.1` | 2026-10-13 | The portal gate read `{"valid": "false"}` as approval; the token tests had never run. |
+| `0.5.2` | 2026-10-13 | `npm test` never built first, so the suite failed on any fresh clone — including CI. Supersedes `0.5.1`. |
+| `0.5.1` | 2026-10-13 | The portal gate read `{"valid": "false"}` as approval; the token tests had never run. **Tagged but never published** — its own workflow failed. |
 | `0.5.0` | 2026-08-16 | CLI non-interactive mode documentation. |
 | `0.4.2` | 2026-08-16 | Version bump. |
 | `0.1.5` | 2026-08-14 | Author name correction. |
@@ -41,6 +42,36 @@ not a date, not the branch.
 | `0.1.2` | 2026-08-07 | `tsconfig.json` module resolution. |
 | `0.1.1` | 2026-07-18 | 48/64 hex token support. |
 | `0.1.0` | 2026-07-11 | First tag. |
+
+## 0.5.1 was tagged and never published
+
+The tag exists. No version of it ever reached npm, and that is not a mistake in
+the tag — it is the tag doing its job.
+
+Pushing it triggered the release workflow, which runs `npm ci`, then
+`npm run test`, then `npm run build`, then `npm publish`. The test step failed,
+so nothing was published. The lockfile was the first problem and was fixed in
+the release commit; this was the second, and it was only visible once the
+workflow could get far enough to reach it:
+
+**`npm test` never built anything.** The script was `vitest run` and nothing
+else, and four test files spawn `node dist/cli/index.js`. On a developer's
+machine `dist/` is usually already there and nobody notices. On a fresh clone
+there is no `dist/`, and 79 of 200 tests fail. The release workflow builds
+*after* testing, so it could never have passed.
+
+That was true before this release, which means `panda-node` has not been
+releasable by tag for as long as those tests have existed. `0.5.0` on npm was
+not published by this workflow.
+
+The fix is a `pretest` script, which npm runs automatically before `test`, so
+the suite is correct for a contributor as well as for CI — rather than
+reordering the workflow, which would have hidden it from everyone else.
+
+`v0.5.1` was left where it is rather than moved. Re-pointing a tag that has
+already been pushed is the operation that produced `panda-php`'s stray tag, and
+a tag that records a failed release is more honest than one quietly rewritten
+to look like it worked. `0.5.2` carries the same changes plus the fix.
 
 ## Why there are two version lines
 
