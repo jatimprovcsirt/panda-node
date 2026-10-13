@@ -58,7 +58,8 @@ copy of it.
 
 | Version | Date | What it was |
 |---|---|---|
-| `0.5.2` | 2026-10-13 | `npm test` never built first, so the suite failed on any fresh clone — including CI. Supersedes `0.5.1`. |
+| `0.5.3` | 2026-10-14 | First release to reach npm since 0.5.0. Publishes with OIDC instead of a token. Supersedes `0.5.1` and `0.5.2`. |
+| `0.5.2` | 2026-10-13 | `npm test` never built first, so the suite failed on any fresh clone — including CI. **Tagged but never published** — its workflow could not authenticate. |
 | `0.5.1` | 2026-10-13 | The portal gate read `{"valid": "false"}` as approval; the token tests had never run. **Tagged but never published** — its own workflow failed. |
 | `0.5.0` | 2026-08-16 | CLI non-interactive mode documentation. |
 | `0.4.2` | 2026-08-16 | Version bump. |
@@ -100,6 +101,31 @@ reordering the workflow, which would have hidden it from everyone else.
 already been pushed is the operation that produced `panda-php`'s stray tag, and
 a tag that records a failed release is more honest than one quietly rewritten
 to look like it worked. `0.5.2` carries the same changes plus the fix.
+
+## Three tags for one release
+
+`0.5.1`, `0.5.2` and `0.5.3` all carry the same change — the token gate reading
+`{"valid": "false"}` as approval, and the token tests that had never run. Each
+of the first two was tagged, and each failed in its own workflow for a
+different reason:
+
+| Tag | Failed at | Why |
+|---|---|---|
+| `v0.5.1` | Run Tests | `npm test` never built `dist/`, so 79 of 200 tests failed on a fresh clone |
+| `v0.5.2` | Publish to npm | `NODE_AUTH_TOKEN` could not write to the scope — `E404` |
+| `v0.5.3` | — | publishes with OIDC |
+
+That is one release's worth of version numbers spent on two defects and one
+dead credential, and it is worth recording because neither of the first two
+failures was visible from the repository: both needed the workflow to run.
+
+`v0.5.1` and `v0.5.2` were left where they are rather than moved. Re-pointing a
+pushed tag is the operation that produced `panda-php`'s stray tag, and a tag
+recording a failed release is more honest than one rewritten to look like it
+worked. `panda-py`'s `v0.2.0` is the precedent.
+
+`0.5.3` is the first release here to publish with OIDC trusted publishing
+rather than a token. `secrets.NPM_TOKEN` is no longer read by anything.
 
 ## Why there are two version lines
 
