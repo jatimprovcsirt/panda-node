@@ -14,7 +14,7 @@ import * as path from 'path';
  * the wizard asked for a token regardless, and there was no way to answer a
  * question that had already been answered.
  */
-export async function runInitWizard(presetToken?: string): Promise<void> {
+export async function runInitWizard(presetToken?: string, reinit = false): Promise<void> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
@@ -28,6 +28,16 @@ export async function runInitWizard(presetToken?: string): Promise<void> {
 
   console.log('\n🐼 PANDA Initialization Wizard');
   console.log('==============================\n');
+
+  // An installation that already exists is not overwritten in silence.
+  // Running init again used to walk the whole wizard and replace the
+  // credentials at the end, which is how somebody loses a working
+  // configuration while believing they were just looking at it.
+  if (!reinit && readCredentials()) {
+    console.log('This project is already initialized.');
+    console.log('Run with --reinit to replace the existing configuration.');
+    return;
+  }
 
   // The same directory setup the non-interactive path uses. The wizard did
   // not do this, so `init` produced a different .panda/ depending on whether
@@ -106,8 +116,11 @@ export async function runInitWizard(presetToken?: string): Promise<void> {
         console.log('\nToken TTL (Optional)');
         console.log('  Token lifetime before auto-renewal. Default: 3600s (1 hour)');
         console.log('  Press Enter to use default, or enter custom value (300-86400 seconds)');
-        const tokenTTL = await question('Token TTL in seconds [default: 3600]: ') || '3600';
-        credentials.vaultTokenTTL = tokenTTL;
+        // Stored as a number. A prompt returns a string, and these were
+        // written straight through, so config.json held "3600" where every
+        // other SDK and every consumer treats a TTL as a number.
+        const tokenTTL = Number((await question('Token TTL in seconds [default: 3600]: ')) || '3600');
+        credentials.vaultTokenTTL = Number.isFinite(tokenTTL) ? tokenTTL : 3600;
       } else {
         // Token authentication
         credentials.vaultAuthMethod = 'token';
@@ -127,7 +140,8 @@ export async function runInitWizard(presetToken?: string): Promise<void> {
       credentials.infisicalClientSecret = await question('Machine Identity Client Secret: ');
       credentials.infisicalProjectId = await question('Project ID: ');
       credentials.infisicalEnvironment = await question('Environment [default: dev]: ') || 'dev';
-      credentials.infisicalCacheTTL = await question('Cache TTL in seconds [default: 300]: ') || '300';
+      const cacheTTL = Number((await question('Cache TTL in seconds [default: 300]: ')) || '300');
+      credentials.infisicalCacheTTL = Number.isFinite(cacheTTL) ? cacheTTL : 300;
       break;
 
     default:
@@ -161,6 +175,13 @@ export async function runInitWizard(presetToken?: string): Promise<void> {
 
     console.log(`✓ Local key generated and written to .env`);
     console.log(`  Variable: ${envVarName}`);
+    console.log(
+      '\n  ⚠️  .env holds this key in plain text. Keep it out of version control,\n' +
+        '      and treat anything in it as production material — never commit it,\n' +
+        '      and never ship it to an environment it was not generated for.\n' +
+        '      .env.example is written alongside it with the values blanked, and\n' +
+        '      that one is safe to commit.'
+    );
   } else if (credentials.provider === 'vault') {
     console.log('For Vault, keys will be retrieved at runtime using the configured path.');
     console.log('Ensure your secret is stored at: ' + credentials.vaultMount + '/<key-id>');

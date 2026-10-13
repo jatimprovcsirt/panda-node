@@ -162,6 +162,23 @@ export async function validateToken(token: string): Promise<void> {
 /**
  * Check if the given token is the static demo token.
  */
+/**
+ * Is this token well-formed?
+ *
+ * Distinct from `validateToken`: that one is asynchronous, consults the
+ * portal, and throws. This one answers a question about the string, and the
+ * CLI needs it before deciding whether to warn a user that what they typed
+ * looks wrong.
+ *
+ * It exists here rather than as a regex at each call site because it was a
+ * regex at each call site — the wizard had its own copy that accepted 48 hex
+ * characters where this accepts 48 or 64, so a token the rest of the tool
+ * considers valid was rejected there.
+ */
+export function validateTokenFormat(token: string): boolean {
+  return TOKEN_PATTERN.test(token);
+}
+
 export function isDemoToken(token: string): boolean {
   return token === DEMO_TOKEN;
 }

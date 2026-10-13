@@ -19,7 +19,18 @@ export async function runDeinitCommand(options: { force: boolean }): Promise<voi
     return;
   }
 
-  // Warning prompt
+  // The warning is printed whether or not --force was passed. --force skips
+  // the question, not the reason for it: the credentials being deleted are
+  // what decrypts the data already in the database, and losing them means
+  // that data cannot be read again. Somebody running this from a script
+  // needs to be told that as much as somebody typing it.
+  console.log(
+    '⚠️  This will permanently delete your PANDA credentials.\n' +
+      '   Any data already encrypted in your database can no longer be decrypted\n' +
+      '   once the keys these credentials reach are gone. If that data matters,\n' +
+      '   export it first.\n'
+  );
+
   if (!options.force) {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -27,11 +38,7 @@ export async function runDeinitCommand(options: { force: boolean }): Promise<voi
     });
 
     const answer = await new Promise<string>((resolve) => {
-      rl.question(
-        '⚠️  This will permanently delete your PANDA configuration including credentials and keys metadata.\n' +
-        'Are you sure you want to continue? (yes/no): ',
-        resolve
-      );
+      rl.question('Are you sure you want to continue? (yes/no): ', resolve);
     });
 
     rl.close();

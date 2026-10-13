@@ -160,6 +160,11 @@ export function runCli(argv: string[]) {
     .description('Initialize PANDA with interactive wizard')
     .option('-k, --kid <type>', 'Key Identifier (quick mode)', 'default-key')
     .option('-t, --token <type>', 'Per-application access token')
+    // Defined because it is referenced. The tests used it, and the wizard now
+    // tells people to run it when a project is already initialized — while
+    // commander rejected it as an unknown option, so the advice pointed at a
+    // command that could not be run.
+    .option('--reinit', 'Replace an existing configuration', false)
     .option('-q, --quick', 'Skip wizard, use quick setup with local provider', false)
     .option('-p, --provider <type>', 'Key provider type: local, vault, or infisical (non-interactive)')
     .option('--keystore <type>', 'Alias for --provider (non-interactive)')
@@ -179,7 +184,10 @@ export function runCli(argv: string[]) {
         // Wizard mode. The token goes with it: the wizard used to be called
         // with no arguments, so --token was read above and then discarded, and
         // the wizard asked for a token that had already been supplied.
-        await runInitWizard(options.token || process.env.PANDA_ACCESS_TOKEN);
+        await runInitWizard(
+          options.token || process.env.PANDA_ACCESS_TOKEN,
+          !!options.reinit
+        );
       }
     });
 

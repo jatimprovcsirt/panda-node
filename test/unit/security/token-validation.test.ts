@@ -6,7 +6,11 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { validateTokenFormat } from '../../src/cli/utils/token-validator';
+// Was ../../src/cli/utils/token-validator: the wrong path and the wrong
+// depth. The module is at src/crypto/tokenValidator, three levels up from
+// here, not two. Vite could not resolve it, so the whole file failed to load
+// and its 41 tests never ran — they had been passing by not existing.
+import { validateTokenFormat } from '../../../src/crypto/tokenValidator';
 
 describe('Security: Token Validation', () => {
   describe('Valid Token Formats', () => {

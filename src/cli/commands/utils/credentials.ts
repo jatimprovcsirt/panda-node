@@ -94,14 +94,14 @@ export interface PandaCredentials {
   vaultSecretId?: string;
   vaultAuthMethod?: 'approle' | 'token';
   vaultMount?: string;
-  vaultTokenTTL?: string;  // Token TTL in seconds (default: 3600)
+  vaultTokenTTL?: number;  // Token TTL in seconds (default: 3600)
   // Infisical options
   infisicalSiteUrl?: string;
   infisicalClientId?: string;
   infisicalClientSecret?: string;
   infisicalProjectId?: string;
   infisicalEnvironment?: string;
-  infisicalCacheTTL?: string;
+  infisicalCacheTTL?: number;
 }
 
 /**

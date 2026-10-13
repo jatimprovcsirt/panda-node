@@ -149,7 +149,10 @@ describe('Security: Credential Storage', () => {
     it('should store Vault token in credentials', async () => {
       await runInit(
         ['--token', 'panda_demo_' + 'a'.repeat(48)],
-        '2\nhttp://localhost:8200\nvault-token-value\nsecret\nkey\n'
+        // The `2` after the URL selects token authentication. The wizard
+        // gained that question after this test was written, and without it
+        // every answer below landed one prompt early.
+        '2\nhttp://localhost:8200\n2\nvault-token-value\nsecret\nkey\n'
       );
 
       const credsFile = path.join(testDir, '.panda', 'credentials');
@@ -228,17 +231,23 @@ describe('Security: Credential Storage', () => {
           '3\nhttps://app.infisical.com\ncid\ncsecret\nproj\ndev\n600\nkey\n'
         );
 
-        const credsFile = path.join(testDir, '.panda', 'credentials');
-        const content = JSON.parse(fs.readFileSync(credsFile, 'utf-8'));
+        // Both files: the secret is in credentials, the rest in config.json.
+        const secrets = JSON.parse(
+          fs.readFileSync(path.join(testDir, '.panda', 'credentials'), 'utf-8')
+        );
+        const config = JSON.parse(
+          fs.readFileSync(path.join(testDir, '.panda', 'config.json'), 'utf-8')
+        );
+        const provider = config.provider.config;
 
-        expect(content.token).toBeDefined();
-        expect(content.provider).toBeDefined();
-        expect(content.infisicalSiteUrl).toBeDefined();
-        expect(content.infisicalClientId).toBeDefined();
-        expect(content.infisicalClientSecret).toBeDefined();
-        expect(content.infisicalProjectId).toBeDefined();
-        expect(content.infisicalEnvironment).toBeDefined();
-        expect(content.infisicalCacheTTL).toBe(600);
+        expect(secrets.token).toBeDefined();
+        expect(secrets.infisicalClientSecret).toBeDefined();
+        expect(config.provider.type).toBe('infisical');
+        expect(provider.infisicalSiteUrl).toBeDefined();
+        expect(provider.infisicalClientId).toBeDefined();
+        expect(provider.infisicalProjectId).toBeDefined();
+        expect(provider.infisicalEnvironment).toBeDefined();
+        expect(provider.infisicalCacheTTL).toBe(600);
       });
 
       it('should handle Unicode in configuration values', async () => {
@@ -259,14 +268,19 @@ describe('Security: Credential Storage', () => {
         // Reinit with different data
         await runInit(
           ['--token', 'panda_demo_' + 'b'.repeat(48), '--reinit'],
-          '2\nhttp://vault.example.com\ntoken\nmount\nkey2\n'
+          '2\nhttp://vault.example.com\n2\ntoken\nmount\nkey2\n'
         );
 
         const credsFile = path.join(testDir, '.panda', 'credentials');
-        const content = JSON.parse(fs.readFileSync(credsFile, 'utf-8'));
+        const secrets = JSON.parse(
+          fs.readFileSync(path.join(testDir, '.panda', 'credentials'), 'utf-8')
+        );
+        const config = JSON.parse(
+          fs.readFileSync(path.join(testDir, '.panda', 'config.json'), 'utf-8')
+        );
 
-        expect(content.provider).toBe('vault');
-        expect(content.token).toContain('b'); // Should have new token
+        expect(config.provider.type).toBe('vault');
+        expect(secrets.token).toContain('b'); // Should have new token
       });
 
       it('should preserve credentials between commands', async () => {
