@@ -127,9 +127,12 @@ describe('Security: Credential Storage', () => {
     it('should store provider type in credentials', async () => {
       await runInit(['--token', 'panda_demo_' + 'a'.repeat(48)], '1\nkey\n');
 
-      const credsFile = path.join(testDir, '.panda', 'credentials');
-      const content = JSON.parse(fs.readFileSync(credsFile, 'utf-8'));
-      expect(content.provider).toBe('local');
+      // From config.json, not credentials. The provider is not a secret and
+      // does not belong in the file that is locked down — which is the whole
+      // point of the split.
+      const configFile = path.join(testDir, '.panda', 'config.json');
+      const content = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+      expect(content.provider.type).toBe('local');
     });
 
     it('should store Infisical client secret in credentials', async () => {

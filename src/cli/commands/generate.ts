@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as readline from 'readline';
-import { readCredentials, writeCredentials } from './utils/credentials';
+import { readCredentials } from './utils/credentials';
+import { addKeyToMetadata } from './utils/panda-dir';
 import { appendEnv } from '../commander';
 import * as path from 'path';
 
@@ -87,16 +88,30 @@ export async function runGenerateCommand(kid: string, options: any): Promise<num
   console.log('\nTo use this key:');
   console.log(`  cipher.encrypt(value, '${kid}', context, field)`);
 
-  // Update credentials with new key
+  // Record the key in keys.json, which is where key metadata lives.
+  //
+  // This used to be written into credentials.keys instead — the same
+  // information, in a second place, next to the secrets. keys.json was
+  // created by every init, read by status, had its own read, write and
+  // add API, and was never written to by anything. Generate is what it was
+  // for.
   if (credentials) {
-    if (!credentials.keys) {
-      credentials.keys = {};
+    const location =
+      provider === 'vault'
+        ? `${credentials.vaultMount || 'secret'}/${kid}`
+        : provider === 'infisical'
+          ? `${credentials.infisicalProjectId || 'project'}/${credentials.infisicalEnvironment || 'dev'}`
+          : `PANDA_KEY_${kid.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}`;
+
+    try {
+      addKeyToMetadata(kid, provider, location);
+    } catch (err) {
+      // Generating the same kid again. The metadata is already recorded and
+      // has not changed; addKeyToMetadata refuses duplicates rather than
+      // silently doing nothing, which is right for a store and not what a
+      // re-run of generate should fail on.
+      if (!String(err).includes('already exists')) throw err;
     }
-    credentials.keys[kid] = {
-      created: new Date().toISOString(),
-      provider: provider
-    };
-    writeCredentials(credentials);
   }
 
   return 0;

@@ -1,5 +1,6 @@
 import * as readline from 'readline';
 import { writeCredentials, readCredentials, PandaCredentials } from './utils/credentials';
+import { createPandaDirectory } from './utils/panda-dir';
 import { appendEnv } from '../commander';
 import { TOKEN_PATTERN } from '../../crypto/tokenValidator';
 import * as crypto from 'crypto';
@@ -27,6 +28,12 @@ export async function runInitWizard(presetToken?: string): Promise<void> {
 
   console.log('\n🐼 PANDA Initialization Wizard');
   console.log('==============================\n');
+
+  // The same directory setup the non-interactive path uses. The wizard did
+  // not do this, so `init` produced a different .panda/ depending on whether
+  // a flag was passed: --quick created keys.json, the wizard did not, and
+  // anything reading it afterwards found a project that looked half-built.
+  createPandaDirectory();
 
   // Step 1: Access token — asked for only if it was not already given.
   console.log('Step 1: Authentication');

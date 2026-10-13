@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { readCredentials, PandaCredentials } from './utils/credentials';
+import { readKeysMetadata } from './utils/panda-dir';
 
 /**
  * Display PANDA configuration details
@@ -53,15 +54,19 @@ export async function runConfigCommand(): Promise<void> {
     console.log(`\nDefault Key ID: ${credentials.defaultKid}`);
   }
 
-  // List configured keys
-  if (credentials.keys && Object.keys(credentials.keys).length > 0) {
+  // List configured keys, from keys.json — the record generate writes and
+  // status reads. This used to read credentials.keys, a second copy of the
+  // same information that nothing kept in step with the first.
+  const keysData = readKeysMetadata();
+  if (keysData && keysData.keys.length > 0) {
     console.log('\nConfigured Keys:');
     console.log('-----------------');
-    Object.entries(credentials.keys).forEach(([kid, info]: [string, any]) => {
-      console.log(`  ${kid}`);
-      console.log(`    Created: ${info.created}`);
-      console.log(`    Provider: ${info.provider}`);
-    });
+    for (const key of keysData.keys) {
+      console.log(`  ${key.kid}`);
+      console.log(`    Created: ${key.created}`);
+      console.log(`    Provider: ${key.provider}`);
+      console.log(`    Location: ${key.location}`);
+    }
   }
 
   // Display .env.example template

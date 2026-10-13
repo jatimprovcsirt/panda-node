@@ -73,10 +73,20 @@ export function readConfig(): PandaConfig | null {
 
 /**
  * Write config.json
+ *
+ * Mode 0644, deliberately, and unlike the credentials file next to it. What
+ * goes here is not secret — a Vault URL, a mount path, an environment name —
+ * and locking it down has costs: it cannot be shared between developers, put
+ * in a ConfigMap, or read by a tool that has no business holding the token.
  */
 export function writeConfig(config: PandaConfig): void {
-  const configPath = path.join(process.cwd(), PANDA_DIR, CONFIG_FILE);
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  const pandaPath = path.join(process.cwd(), PANDA_DIR);
+  if (!fs.existsSync(pandaPath)) {
+    fs.mkdirSync(pandaPath, { recursive: true });
+  }
+
+  const configPath = path.join(pandaPath, CONFIG_FILE);
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o644 });
 }
 
 /**

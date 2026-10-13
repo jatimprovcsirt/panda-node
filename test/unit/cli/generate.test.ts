@@ -245,31 +245,36 @@ describe('CLI Generate Command', () => {
   });
 
   describe('Key Metadata', () => {
-    it('should update credentials with key metadata', async () => {
+    // Read from keys.json, which is where key metadata lives. These used to
+    // read credentials.keys — a second copy of the same information, written
+    // by generate and read by nobody else, while keys.json existed with its
+    // own API and no writer at all.
+    const readKeys = () =>
+      JSON.parse(
+        fs.readFileSync(path.join(testDir, '.panda', 'keys.json'), 'utf-8')
+      ).keys as Array<{ kid: string; created: string; provider: string; location: string }>;
+
+    it('should record key metadata', async () => {
       await runGenerate(['tracked-key']);
 
-      const credsFile = path.join(testDir, '.panda', 'credentials');
-      const content = JSON.parse(fs.readFileSync(credsFile, 'utf-8'));
-      expect(content.keys['tracked-key']).toBeDefined();
-      expect(content.keys['tracked-key'].created).toBeDefined();
+      const entry = readKeys().find((k) => k.kid === 'tracked-key');
+      expect(entry).toBeDefined();
+      expect(entry!.created).toBeDefined();
     });
 
     it('should store provider in metadata', async () => {
       await runGenerate(['provider-key']);
 
-      const credsFile = path.join(testDir, '.panda', 'credentials');
-      const content = JSON.parse(fs.readFileSync(credsFile, 'utf-8'));
-      expect(content.keys['provider-key'].provider).toBe('local');
+      expect(readKeys().find((k) => k.kid === 'provider-key')!.provider).toBe('local');
     });
 
     it('should track multiple keys', async () => {
       await runGenerate(['first-key']);
       await runGenerate(['second-key']);
 
-      const credsFile = path.join(testDir, '.panda', 'credentials');
-      const content = JSON.parse(fs.readFileSync(credsFile, 'utf-8'));
-      expect(content.keys['first-key']).toBeDefined();
-      expect(content.keys['second-key']).toBeDefined();
+      const kids = readKeys().map((k) => k.kid);
+      expect(kids).toContain('first-key');
+      expect(kids).toContain('second-key');
     });
   });
 
