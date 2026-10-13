@@ -30,6 +30,7 @@ not a date, not the branch.
 
 | Version | Date | What it was |
 |---|---|---|
+| `0.5.1` | 2026-10-13 | The portal gate read `{"valid": "false"}` as approval; the token tests had never run. |
 | `0.5.0` | 2026-08-16 | CLI non-interactive mode documentation. |
 | `0.4.2` | 2026-08-16 | Version bump. |
 | `0.1.5` | 2026-08-14 | Author name correction. |
@@ -55,9 +56,9 @@ the order things happened in, and `0.1.5` is *newer* than `0.4.1`.
 re-based again, say so here rather than leaving the next person to work it out
 from dates.
 
-## Unreleased — the token format, and a test file that never ran
+## What 0.5.1 fixes
 
-No new tag yet. The next release is `0.5.1`.
+### The token format, and a test file that never ran
 
 `token-validation.test.ts` imported `../../src/cli/utils/token-validator` — a
 path that does not exist, at the wrong depth as well as the wrong location. The
@@ -94,10 +95,9 @@ Also in this change:
 
 173 tests pass. Before this, 109 passed and 23 failed.
 
-## Unreleased, part two — a response saying "no" was read as approval
+### A response saying "no" was read as approval
 
-On top of the token-format work above, found while writing tests for the
-portal call that had never had any.
+Found while writing tests for the portal call, which had never had any.
 
 `validateToken` checked the portal's answer with `if (!result.valid)`. A
 non-empty string is truthy in JavaScript, so `{"valid": "false"}` — a response
