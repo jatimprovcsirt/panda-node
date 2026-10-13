@@ -66,7 +66,12 @@ async function validateTokenOnline(token: string): Promise<void> {
 
     const result: ValidateTokenResponse = await response.json();
 
-    if (!result.valid) {
+    // Strictly the boolean true. `if (!result.valid)` was wrong in the
+    // dangerous direction: {"valid": "false"} is a non-empty string, which is
+    // truthy in JavaScript, so a response saying *no* was read as approval and
+    // a key was generated. panda-go refused it, because decoding a string into
+    // a Go bool fails — which is how the divergence was found.
+    if (result.valid !== true) {
       switch (result.reason) {
         case 'revoked':
           throw new InvalidTokenError(

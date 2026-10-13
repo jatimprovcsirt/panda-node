@@ -93,3 +93,33 @@ Also in this change:
   something to call.
 
 173 tests pass. Before this, 109 passed and 23 failed.
+
+## Unreleased, part two — a response saying "no" was read as approval
+
+On top of the token-format work above, found while writing tests for the
+portal call that had never had any.
+
+`validateToken` checked the portal's answer with `if (!result.valid)`. A
+non-empty string is truthy in JavaScript, so `{"valid": "false"}` — a response
+explicitly saying the token is not valid — was read as approval and a key was
+generated. So were `{"valid": "no"}` and `{"valid": 1}`.
+
+`panda-go` refused all of them, because decoding a JSON string into a Go `bool`
+fails. It was the only one of the four that was right, and that disagreement is
+how the bug became visible.
+
+The check is now `result.valid !== true`. Only the JSON boolean `true` is
+consent; every other value, including the string `"true"`, is a refusal.
+
+`test/unit/security/token-portal.test.ts` is new: 27 tests covering the happy
+path, each refusal reason, every truthy-but-not-true value, and fail-closed
+behaviour for a timeout, a refused connection, a 500, a 404 and an HTML body.
+Everything is mocked, so the result does not depend on whether a live portal is
+reachable.
+
+Also pinned: `panda_demo_<48 hex>` with a trailing newline is rejected. In
+Python and PCRE, `$` also matches before a final newline, so those bytes were a
+valid token in `panda-py` and `panda-php` and invalid here and in `panda-go`.
+Node's `$` never had the quirk; the test keeps it that way.
+
+200 tests pass.
