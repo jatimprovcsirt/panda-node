@@ -5,6 +5,10 @@
     "type": "git",
     "url": "git+https://github.com/jatimprovcsirt/panda-node.git"
   },
+  "homepage": "https://panda.jatimprovcsirt.go.id",
+  "bugs": {
+    "url": "https://github.com/jatimprovcsirt/panda-node/issues"
+  },
   "description": "PANDA (Private And Secure Data Access) SDK for Node.js",
   "license": "Apache-2.0",
   "author": "Bidang Persandian dan Keamanan Informasi - Dinas Komunikasi dan Informatika Provinsi Jawa Timur <csirt@jatimprov.go.id>",
