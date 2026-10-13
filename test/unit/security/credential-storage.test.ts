@@ -28,26 +28,80 @@ describe('Security: Credential Storage', () => {
     }
   });
 
+  /**
+   * Drive `panda init` through its wizard, answering each prompt as it appears.
+   *
+   * Writing the whole input and closing stdin does not work, and never did:
+   * readline emits a line that arrives with no question pending, and with no
+   * listener attached it is dropped. Only the first prompt was ever answered,
+   * the wizard waited for input that had already been sent, and the process
+   * exited having written nothing — which is why the nineteen tests below
+   * were failing. The implementation was fine; the hose was.
+   *
+   * So the answers are held back and written one at a time, each after the
+   * prompt it belongs to.
+   */
   const runInit = (args: string[], input: string): Promise<{ exitCode: number; output: string }> => {
     return new Promise((resolve) => {
       let output = '';
+      const lines = input.split('\n').filter((line) => line.length > 0);
+      let sent = 0;
+      let lastLength = -1;
+
       const proc = spawn('node', [pandaExe, 'init', ...args], {
         cwd: testDir,
         env: { ...process.env }
       });
 
-      proc.stdin.write(input);
-      proc.stdin.end();
+      // A prompt that is waiting has printed ': ' and nothing after it.
+      // Sending only when the output has grown since the last answer is what
+      // keeps two prompts from being answered by one line.
+      let idle: ReturnType<typeof setTimeout>;
+
+      const answerPrompt = () => {
+        clearTimeout(idle);
+        if (sent >= lines.length) {
+          // Out of answers. Closing stdin lets a waiting prompt see end of
+          // input and the process exit; without this the wizard waits forever
+          // and the test hangs rather than failing.
+          try {
+            proc.stdin.end();
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
+        if (output.endsWith(': ') && output.length !== lastLength) {
+          lastLength = output.length;
+          proc.stdin.write(lines[sent++] + '\n');
+        }
+        // The wizard prints several lines between prompts. Waiting for quiet
+        // before concluding that it is done avoids cutting it off mid-sentence.
+        idle = setTimeout(() => {
+          try {
+            proc.stdin.end();
+          } catch {
+            /* already closed */
+          }
+        }, 1500);
+      };
 
       proc.stdout.on('data', (data) => {
         output += data.toString();
+        answerPrompt();
       });
 
       proc.stderr.on('data', (data) => {
         output += data.toString();
+        answerPrompt();
       });
 
+      // Nothing in the tests reads stdin, but a closed pipe would otherwise
+      // raise EPIPE into the test run and look like a failure in the command.
+      proc.stdin.on('error', () => {});
+
       proc.on('close', (code) => {
+        clearTimeout(idle);
         resolve({ exitCode: code || 0, output });
       });
     });

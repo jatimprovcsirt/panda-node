@@ -176,8 +176,10 @@ export function runCli(argv: string[]) {
         const provider = options.keystore || options.provider || 'local';
         await runQuickInit({ ...options, provider });
       } else {
-        // Wizard mode
-        await runInitWizard();
+        // Wizard mode. The token goes with it: the wizard used to be called
+        // with no arguments, so --token was read above and then discarded, and
+        // the wizard asked for a token that had already been supplied.
+        await runInitWizard(options.token || process.env.PANDA_ACCESS_TOKEN);
       }
     });
 

@@ -146,6 +146,7 @@ describe('VaultKeyProvider', () => {
       };
 
       let requestCount = 0;
+      let keyFetchCount = 0;
       vi.mocked(https.request).mockImplementation((url, options, callback) => {
         requestCount++;
         if (url.toString().includes('auth/approle/login')) {
@@ -161,6 +162,15 @@ describe('VaultKeyProvider', () => {
           destroy: vi.fn()
         } as any;
       });
+      // The key itself is fetched with GET; only the AppRole login is a POST.
+      // Only https.request was mocked, so https.get returned undefined and the
+      // .on('error') chained onto it threw before any response was read —
+      // which is why these three tests failed while the token ones passed.
+      vi.mocked(https.get).mockImplementation((url, options, callback) => {
+        keyFetchCount++;
+        (callback as any)(mockKeyResponse);
+        return { on: vi.fn() } as any;
+      });
 
       const provider = new VaultKeyProvider({
         vaultUrl: 'https://localhost:8200',
@@ -171,7 +181,13 @@ describe('VaultKeyProvider', () => {
       const key = await provider.getKey('test-key');
       expect(key).toBeInstanceOf(Buffer);
       expect(key.length).toBe(32);
-      expect(requestCount).toBe(2); // One for auth, one for key fetch
+
+      // One POST to log in, one GET for the key. This asserted that
+      // https.request had been called twice, which measured the transport
+      // rather than the round trips: the key is fetched with GET, so the
+      // number was one and the assertion was looking at the wrong thing.
+      expect(requestCount).toBe(1);
+      expect(keyFetchCount).toBe(1);
     });
 
     it('should cache token and reuse for subsequent key requests', async () => {
@@ -230,6 +246,14 @@ describe('VaultKeyProvider', () => {
           setTimeout: vi.fn(),
           destroy: vi.fn()
         } as any;
+      });
+      // The key itself is fetched with GET; only the AppRole login is a POST.
+      // Only https.request was mocked, so https.get returned undefined and the
+      // .on('error') chained onto it threw before any response was read —
+      // which is why these three tests failed while the token ones passed.
+      vi.mocked(https.get).mockImplementation((url, options, callback) => {
+        (callback as any)(mockKeyResponse);
+        return { on: vi.fn() } as any;
       });
 
       const provider = new VaultKeyProvider({
@@ -303,6 +327,14 @@ describe('VaultKeyProvider', () => {
           setTimeout: vi.fn(),
           destroy: vi.fn()
         } as any;
+      });
+      // The key itself is fetched with GET; only the AppRole login is a POST.
+      // Only https.request was mocked, so https.get returned undefined and the
+      // .on('error') chained onto it threw before any response was read —
+      // which is why these three tests failed while the token ones passed.
+      vi.mocked(https.get).mockImplementation((url, options, callback) => {
+        (callback as any)(mockKeyResponse);
+        return { on: vi.fn() } as any;
       });
 
       // Create provider with short token TTL

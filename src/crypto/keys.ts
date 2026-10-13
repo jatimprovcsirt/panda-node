@@ -93,6 +93,15 @@ export class VaultKeyProvider implements KeyProvider {
   private tokenExpires: number = 0;
 
   constructor(config: VaultConfig) {
+    // Checked before the trailing-slash strip below, which throws a TypeError
+    // on undefined and says nothing useful about what was missing. An empty
+    // string passed that strip happily and produced requests to a relative
+    // path — a misconfiguration that only surfaced as a failed fetch later,
+    // naming nothing.
+    if (!config.vaultUrl) {
+      throw new Error('VaultKeyProvider requires vaultUrl');
+    }
+
     this.config = {
       vaultUrl: config.vaultUrl.replace(/\/$/, ''),
       vaultToken: config.vaultToken,

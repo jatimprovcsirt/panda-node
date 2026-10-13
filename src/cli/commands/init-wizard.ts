@@ -1,13 +1,19 @@
 import * as readline from 'readline';
 import { writeCredentials, readCredentials, PandaCredentials } from './utils/credentials';
 import { appendEnv } from '../commander';
+import { TOKEN_PATTERN } from '../../crypto/tokenValidator';
 import * as crypto from 'crypto';
 import * as path from 'path';
 
 /**
- * Interactive wizard for initializing PANDA with different key providers
+ * Interactive wizard for initializing PANDA with different key providers.
+ *
+ * `presetToken` is what the caller passed to `--token`. This function used to
+ * take no arguments, so the option was read by the command and then dropped —
+ * the wizard asked for a token regardless, and there was no way to answer a
+ * question that had already been answered.
  */
-export async function runInitWizard(): Promise<void> {
+export async function runInitWizard(presetToken?: string): Promise<void> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
@@ -22,16 +28,27 @@ export async function runInitWizard(): Promise<void> {
   console.log('\n🐼 PANDA Initialization Wizard');
   console.log('==============================\n');
 
-  // Step 1: Ask for access token
+  // Step 1: Access token — asked for only if it was not already given.
   console.log('Step 1: Authentication');
   console.log('---------------------');
-  const token = await question('Enter your PANDA access token (or press Enter to skip validation): ');
+
+  let token = presetToken || '';
+  if (token) {
+    console.log('Using the token passed with --token.');
+  } else {
+    token = await question('Enter your PANDA access token (or press Enter to skip validation): ');
+  }
 
   if (token) {
-    // Validate token format
-    const tokenPattern = /^panda_(demo|live)_[a-f0-9]{48}$/;
-    if (!tokenPattern.test(token)) {
-      console.log('⚠️  Warning: Token format appears invalid. Expected: panda_demo_live_...');
+    // The pattern comes from the shared validator rather than being written
+    // out again here. It was written out again, and the two had drifted: this
+    // copy accepted 48 hex characters where the validator accepts 48 or 64, so
+    // a token the rest of the tool considers valid was rejected here.
+    if (!TOKEN_PATTERN.test(token)) {
+      console.log(
+        '⚠️  Warning: Token format appears invalid. Expected: panda_(demo|live)_ ' +
+          'followed by 48 or 64 hex characters.'
+      );
       const continueAnyway = await question('Continue anyway? (y/n): ');
       if (continueAnyway.toLowerCase() !== 'y') {
         rl.close();
