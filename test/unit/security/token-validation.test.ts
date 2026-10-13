@@ -2,7 +2,7 @@
  * Security tests for token validation.
  *
  * Tests verify that PANDA tokens are properly validated according
- * to the specified format: panda_(demo|live)_[48 hex chars]
+ * to the specified format: panda_(demo|live)_[48 or 64 lowercase hex chars]
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -24,18 +24,16 @@ describe('Security: Token Validation', () => {
       expect(validateTokenFormat(token)).toBe(true);
     });
 
-    it('should accept mixed case hex', () => {
-      const token = 'panda_demo_' + 'aA1Bb2Cc3Dd4Ee5Ff6'.repeat(3);
-      expect(validateTokenFormat(token)).toBe(true);
-    });
+    // Hex here is lowercase, and the format says so. These four used to
+    // assert the opposite — that mixed and uppercase hex were accepted — and
+    // they had never run, so nothing contradicted them. Every implementation
+    // and CLAUDE.md agree on [a-f0-9]; these were the only dissent, and the
+    // only ones that had not been executed.
 
     it('should accept numeric hex only', () => {
-      const token = 'panda_demo_' + '1234567890'.repeat(4) + '123456789012';
-      expect(validateTokenFormat(token)).toBe(true);
-    });
-
-    it('should accept uppercase hex only', () => {
-      const token = 'panda_demo_' + 'A'.repeat(48);
+      // Digits are hex. The token was 52 characters before, so this asserted
+      // that an over-long token was valid rather than that digits are allowed.
+      const token = 'panda_demo_' + '1234567890'.repeat(4) + '12345678';
       expect(validateTokenFormat(token)).toBe(true);
     });
 
@@ -44,8 +42,10 @@ describe('Security: Token Validation', () => {
       expect(validateTokenFormat(token)).toBe(true);
     });
 
-    it('should accept max hex value (F)', () => {
-      const token = 'panda_live_' + 'F'.repeat(48);
+    it('should accept a 64-character token', () => {
+      // Accepted by panda-node and panda-php, rejected by panda-py until the
+      // pattern was aligned. The format allows 48 or 64.
+      const token = 'panda_live_' + 'f'.repeat(64);
       expect(validateTokenFormat(token)).toBe(true);
     });
   });
@@ -193,11 +193,27 @@ describe('Security: Token Validation', () => {
 
   describe('Length Validation', () => {
     it('should accept exactly 48 hex chars', () => {
+      // Three groups of sixteen is forty-eight, so the whole token is 59
+      // characters. The assertion here said 61, and the comment explaining it
+      // ("+ '1234567890abcdef' (2)") counted a group that is not in the string.
+      // It would have been a real failure had the file ever loaded.
       const token = 'panda_demo_1234567890abcdef' + '1234567890abcdef' + '1234567890abcdef';
-      expect(token.length).toBe(61); // 'panda_demo_' (11) + 48 + '1234567890abcdef' (2)
-      // Actually let's verify exact length
+      expect(token.length).toBe(59); // 'panda_demo_' (11) + 48
       expect('panda_demo_'.length).toBe(11);
       expect(validateTokenFormat(token)).toBe(true);
+    });
+
+    it('should accept exactly 64 hex chars', () => {
+      const token = 'panda_live_' + 'ab12'.repeat(16);
+      expect(token.length).toBe(75); // 'panda_live_' (11) + 64
+      expect(validateTokenFormat(token)).toBe(true);
+    });
+
+    it('should reject 63 or 65 hex chars', () => {
+      // 48 and 64 are the only two lengths. Anything between them is not
+      // "close enough" — it is a different, unsupported format.
+      expect(validateTokenFormat('panda_demo_' + 'a'.repeat(63))).toBe(false);
+      expect(validateTokenFormat('panda_demo_' + 'a'.repeat(65))).toBe(false);
     });
 
     it('should reject 47 chars', () => {
@@ -225,9 +241,14 @@ describe('Security: Token Validation', () => {
       expect(validateTokenFormat('panda_Live_' + 'a'.repeat(48))).toBe(false);
     });
 
-    it('should allow case-insensitive hex', () => {
-      expect(validateTokenFormat('panda_demo_' + 'A'.repeat(48))).toBe(true);
-      expect(validateTokenFormat('panda_demo_' + 'aBcDeFgHiJkLmNoPqRsTuVwXyZ123456')).toBe(true);
+    it('should require lowercase hex', () => {
+      // Not "case-insensitive". A token is a credential that is compared
+      // byte-for-byte against what the portal issued, and the format says
+      // [a-f0-9]. Accepting uppercase would mean two spellings of one token
+      // both pass a local check and only one of them works.
+      expect(validateTokenFormat('panda_demo_' + 'A'.repeat(48))).toBe(false);
+      expect(validateTokenFormat('panda_demo_' + 'aBcDeFgHiJkLmNoPqRsTuVwXyZ123456')).toBe(false);
+      expect(validateTokenFormat('panda_demo_' + 'a'.repeat(47) + 'F')).toBe(false);
     });
   });
 

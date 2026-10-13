@@ -54,3 +54,42 @@ the order things happened in, and `0.1.5` is *newer* than `0.4.1`.
 `0.5.0` is the tip of the line that continues. If the numbering is ever
 re-based again, say so here rather than leaving the next person to work it out
 from dates.
+
+## Unreleased — the token format, and a test file that never ran
+
+No new tag yet. The next release is `0.5.1`.
+
+`token-validation.test.ts` imported `../../src/cli/utils/token-validator` — a
+path that does not exist, at the wrong depth as well as the wrong location. The
+module is at `src/crypto/tokenValidator`, three levels up. Vite could not
+resolve it, so the whole file failed to load and its 41 tests never ran. They
+had been passing by not existing, which is the most comfortable way for a test
+to pass.
+
+Fixing the import turned six of them red, and they were red for a good reason.
+Four asserted that uppercase and mixed-case hex are *accepted*. No
+implementation has ever accepted them, and `panda-spec/token-format.md` now
+says so explicitly: a token is compared byte-for-byte against what the portal
+issued, so accepting both spellings would let a token pass the local check and
+then fail at the portal. The tests were the only dissent — and the only ones
+that had never been executed.
+
+Two more were wrong on arithmetic rather than policy: one asserted a 61-
+character token length for a 59-character string, and the comment explaining it
+counted a group that is not in the string.
+
+The other fifteen failures were the harness, not the implementation.
+`credential-storage.test.ts` drove the wizard with `stdin.write(input)` followed
+by `stdin.end()`, and readline drops a line that arrives with no question
+pending — so only the first prompt was ever answered, the wizard waited for
+input that had already been sent, and the process exited having written nothing.
+
+Also in this change:
+
+- `TOKEN_PATTERN` and the token helpers are exported from the package root.
+  They were reachable only from the CLI, while `panda-go` and `panda-php`
+  expose theirs.
+- `src/index.ts` now exports them so the cross-language vector runner has
+  something to call.
+
+173 tests pass. Before this, 109 passed and 23 failed.
