@@ -7,6 +7,11 @@ import {
   PandaConfig,
 } from './panda-dir';
 
+// This file had its own private reader for the package version, four `../`
+// deep. It now uses the shared one, so there is a single definition of the
+// number rather than one per layer that happens to need it.
+import { packageVersion } from '../../../version';
+
 /**
  * Credential storage utilities
  *
@@ -158,7 +163,7 @@ export function writeCredentials(credentials: PandaCredentials): void {
 
   const existing = readConfig();
   const config: PandaConfig = {
-    version: existing?.version ?? cliVersion(),
+    version: existing?.version ?? packageVersion(),
     initialized: existing?.initialized ?? new Date().toISOString(),
     provider: {
       type: credentials.provider ?? 'local',
@@ -239,14 +244,6 @@ function parseStored(raw: string): Record<string, unknown> {
  * out by hand is a version that ends up wrong: the Python SDK reported 0.1.0
  * from a literal in its CLI for two releases after the package had moved on.
  */
-function cliVersion(): string {
-  try {
-    // Four levels up from dist/cli/commands/utils to the package root.
-    return require('../../../../package.json').version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}
 
 /**
  * Store encrypted credentials (legacy)

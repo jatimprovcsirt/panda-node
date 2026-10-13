@@ -1,4 +1,6 @@
 import * as http from 'http';
+
+import { packageVersion } from '../version';
 import * as https from 'https';
 import * as crypto from 'crypto';
 
@@ -26,7 +28,7 @@ export class TelemetryClient {
     this.disabled = process.env.PANDA_TELEMETRY_DISABLED === '1' || process.env.PANDA_TELEMETRY_DISABLED === 'true';
   }
 
-  async report(token: string, keyBytes: Buffer, sdkVersion: string = '0.1.0'): Promise<void> {
+  async report(token: string, keyBytes: Buffer, sdkVersion: string = packageVersion()): Promise<void> {
     if (this.disabled) {
       return;
     }

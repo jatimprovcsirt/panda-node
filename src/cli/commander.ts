@@ -7,6 +7,7 @@ import { FieldCipher } from '../crypto/cipher';
 import { Envelope } from '../envelope/envelope';
 import { validateToken, isDemoToken, isLocalEnvironment } from '../crypto/tokenValidator';
 import { runInitWizard } from './commands/init-wizard';
+import { packageVersion } from '../version';
 import { runGenerateCommand } from './commands/generate';
 import { runStatusCommand } from './commands/status';
 import { runConfigCommand } from './commands/config';
@@ -152,7 +153,7 @@ export function runCli(argv: string[]) {
   program
     .name('panda')
     .description('PANDA CLI Tool for Node.js')
-    .version('0.1.0');
+    .version(packageVersion());
 
   // init command (wizard mode)
   program

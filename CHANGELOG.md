@@ -58,6 +58,7 @@ copy of it.
 
 | Version | Date | What it was |
 |---|---|---|
+| `0.5.4` | 2026-10-14 | `panda --version` and the telemetry payload reported a hardcoded `0.1.0`. |
 | `0.5.3` | 2026-10-14 | First release to reach npm since 0.5.0. Publishes with OIDC instead of a token. Supersedes `0.5.1` and `0.5.2`. |
 | `0.5.2` | 2026-10-13 | `npm test` never built first, so the suite failed on any fresh clone — including CI. **Tagged but never published** — its workflow could not authenticate. |
 | `0.5.1` | 2026-10-13 | The portal gate read `{"valid": "false"}` as approval; the token tests had never run. **Tagged but never published** — its own workflow failed. |
@@ -101,6 +102,35 @@ reordering the workflow, which would have hidden it from everyone else.
 already been pushed is the operation that produced `panda-php`'s stray tag, and
 a tag that records a failed release is more honest than one quietly rewritten
 to look like it worked. `0.5.2` carries the same changes plus the fix.
+
+## 0.5.3 shipped reporting itself as 0.1.0
+
+Found by installing 0.5.3 from npm into an empty project and running it, which
+is the only way this was ever going to be found. `panda --version` printed
+`0.1.0`.
+
+The version lived in three places: `package.json`, a string literal in
+`commander.ts`, and a default argument in `telemetry.ts`. The first was
+maintained and the other two were not, so the CLI and the telemetry payload
+both reported `0.1.0` — through every release from 0.1.0 to 0.5.3.
+
+The telemetry one is the quieter of the two. `cipher.ts` calls
+`report(token, key)` with two arguments, so the default argument is what
+actually ships; every telemetry record this SDK has ever sent carried a
+version that had not been current for four minor releases.
+
+A correct reader already existed — `cliVersion()` in the credential utilities,
+four `../` deep — and was used for exactly one field. It is now `src/version.ts`
+at the package root, used by all three callers, and the private copy is gone.
+
+Nothing caught this because nothing asserted it. Six tests now do: the shared
+reader, the spawned CLI's `--version` output, and the telemetry payload. Both
+failures were confirmed by putting the literals back — each fails with
+`expected '0.1.0' to be '0.5.4'`.
+
+This is the sixth instance of the same defect in this project, and the third
+where the second copy lived in a place nothing executed: the token pattern, the
+M003 lint rule, and now a version string.
 
 ## Three tags for one release
 
