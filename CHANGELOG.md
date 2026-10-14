@@ -20,7 +20,7 @@ Before tagging:
 4. Tag the same number with a `v` prefix — `0.5.1` in `package.json` means
    `v0.5.1` as the tag, never anything else.
 5. Push the branch, then the tag.
-6. Confirm the release exists: `npm view @jatimprovcsirt/panda version`
+6. Confirm the release exists: `npm view @jatimprovcsirt/panda-node version`
 7. Add it to the table below.
 
 Only two numbers matter, and they must match. Not another PANDA SDK's version,
