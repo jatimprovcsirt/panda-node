@@ -155,6 +155,23 @@ describe('CLI Init Command', () => {
       expect(fs.existsSync(envFile)).toBe(true);
     });
 
+    it('should write no key when --skip-key-gen is given', async () => {
+      // The flag exists in panda-php, panda-go and panda-py. Without it there
+      // is no way to prepare a project for a key provisioned later.
+      await runInit(
+        ['--token', 'panda_demo_76d08573d453cdbdb4bf5704d13f8f54d57cd3c47c9b4be2', '--skip-key-gen']
+      );
+
+      expect(fs.existsSync(path.join(testDir, '.env'))).toBe(false);
+      // The identifier is still recorded — only generation is skipped. It
+      // lands in config.json rather than credentials, because it is not a
+      // secret and the two files are split on exactly that question.
+      const config = JSON.parse(
+        fs.readFileSync(path.join(testDir, '.panda', 'config.json'), 'utf-8')
+      );
+      expect(config.defaultKid).toBe('default-key');
+    });
+
     it('should create .env.example file', async () => {
       await runInit(
         ['--token', 'panda_demo_76d08573d453cdbdb4bf5704d13f8f54d57cd3c47c9b4be2', '--kid', 'local-key']

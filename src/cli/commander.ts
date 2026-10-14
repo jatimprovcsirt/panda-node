@@ -48,7 +48,9 @@ async function runQuickInit(options: any): Promise<void> {
   // Provider-specific setup
   switch (provider) {
     case 'local':
-      await setupLocalProvider(kid, options);
+      if (!options.skipKeyGen) {
+        await setupLocalProvider(kid, options);
+      }
       break;
 
     case 'vault':
@@ -167,6 +169,11 @@ export function runCli(argv: string[]) {
     // command that could not be run.
     .option('--reinit', 'Replace an existing configuration', false)
     .option('-q, --quick', 'Skip wizard, use quick setup with local provider', false)
+    // panda-php, panda-go and panda-py all have this. Without it there is no
+    // way to prepare a project for a key that is provisioned later — which is
+    // the shape of a deployment where the key arrives from a secret manager
+    // and the token gate still has to be satisfied first.
+    .option('--skip-key-gen', 'Skip first key generation', false)
     .option('-p, --provider <type>', 'Key provider type: local, vault, or infisical (non-interactive)')
     .option('--keystore <type>', 'Alias for --provider (non-interactive)')
     .action(async (options) => {
