@@ -58,6 +58,7 @@ copy of it.
 
 | Version | Date | What it was |
 |---|---|---|
+| `0.5.5` | 2026-10-14 | Blind index trimming used JavaScript's `trim()`, which is a different set from the spec's. |
 | `0.5.4` | 2026-10-14 | `panda --version` and the telemetry payload reported a hardcoded `0.1.0`. |
 | `0.5.3` | 2026-10-14 | First release to reach npm since 0.5.0. Publishes with OIDC instead of a token. Supersedes `0.5.1` and `0.5.2`. |
 | `0.5.2` | 2026-10-13 | `npm test` never built first, so the suite failed on any fresh clone — including CI. **Tagged but never published** — its workflow could not authenticate. |
