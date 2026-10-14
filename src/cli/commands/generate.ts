@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 import * as readline from 'readline';
 import { readCredentials } from './utils/credentials';
 import { addKeyToMetadata } from './utils/panda-dir';
-import { appendEnv } from '../commander';
+import { appendEnv, PROVIDERS } from '../commander';
 import * as path from 'path';
 
 /**
@@ -10,7 +10,7 @@ import * as path from 'path';
  */
 export async function runGenerateCommand(kid: string, options: any): Promise<number> {
   const credentials = readCredentials();
-  const nonInteractive = options.yes || options.keystore;
+  const nonInteractive = options.yes;
 
   // Check if initialized
   if (!credentials) {
@@ -20,7 +20,7 @@ export async function runGenerateCommand(kid: string, options: any): Promise<num
 
   if (!kid) {
     if (nonInteractive) {
-      console.error('Error: Key ID is required in non-interactive mode. Use: panda generate <kid> --yes');
+      console.error('Error: Key ID is required in non-interactive mode. Use: panda generate <kid>');
       return 1;
     }
 
@@ -61,8 +61,15 @@ export async function runGenerateCommand(kid: string, options: any): Promise<num
   const keyBytes = crypto.randomBytes(32);
   const keyBase64 = keyBytes.toString('base64');
 
-  // Use keystore override if provided, otherwise use credentials provider
-  const provider = options.keystore || credentials?.provider || 'local';
+  // The override, applied here rather than inside the store branches below.
+  // panda-node called this `--keystore`; one concept under two names is two
+  // definitions of it, and cli-flags.md pins --provider.
+  const provider = options.provider || credentials?.provider || 'local';
+
+  if (options.provider && !PROVIDERS.includes(provider)) {
+    console.error(`Unknown provider: ${provider}. Expected one of: ${PROVIDERS.join(', ')}`);
+    return 1;
+  }
 
   switch (provider) {
     case 'local':

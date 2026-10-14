@@ -58,6 +58,7 @@ copy of it.
 
 | Version | Date | What it was |
 |---|---|---|
+| `0.5.6` | 2026-10-14 | `--provider` on `init` and `generate`. `--keystore`, its second name, is gone. |
 | `0.5.5` | 2026-10-14 | Blind index trimming used JavaScript's `trim()`, which is a different set from the spec's. |
 | `0.5.4` | 2026-10-14 | `panda --version` and the telemetry payload reported a hardcoded `0.1.0`. |
 | `0.5.3` | 2026-10-14 | First release to reach npm since 0.5.0. Publishes with OIDC instead of a token. Supersedes `0.5.1` and `0.5.2`. |
@@ -171,6 +172,77 @@ the order things happened in, and `0.1.5` is *newer* than `0.4.1`.
 `0.5.0` is the tip of the line that continues. If the numbering is ever
 re-based again, say so here rather than leaving the next person to work it out
 from dates.
+
+
+## What 0.5.6 adds
+
+### `--provider` on `init` and `generate`
+
+`panda-node` had this flag and the other three did not, so `init --quick` could
+only ever configure the local provider: **Vault and Infisical were unreachable
+from a CI pipeline here.** A team provisioning into Vault from a build could do
+it in Node.js and not in the language they were actually using.
+
+It is the sixth instance of this project's recurring defect — a shared rule
+with more than one definition. Five `init` flags were uniform before it, and
+each became uniform the same way: added to all four in turn, each time after
+noticing one SDK had it and another did not. The set is now pinned in
+`panda-spec/cli-flags.md`, and `verify_interop.js` section 10 runs `--help` in
+all four SDKs and asserts every pinned name appears. Reverting this release's
+change fails exactly the two checks written for it.
+
+### Provider settings come from the environment, and are required
+
+`--provider` names the provider; it does not carry its settings, and on this
+path there is nobody to ask. The variables are the ones `CLAUDE.md` and the
+provider classes already use — `PANDA_VAULT_URL` and either
+`PANDA_VAULT_ROLE_ID` + `PANDA_VAULT_SECRET_ID` or `PANDA_VAULT_TOKEN` for
+Vault; `PANDA_INFISICAL_CLIENT_ID`, `PANDA_INFISICAL_CLIENT_SECRET` and
+`PANDA_INFISICAL_PROJECT_ID` for Infisical.
+
+`PANDA_VAULT_AUTH_METHOD` is inferred when it is not set: role and secret means
+`approle`, a token means `token`, neither is an error naming the variable.
+
+**A missing required variable exits 1 and writes nothing** — no `.panda`
+directory, no `.env`, no key. The wizard may offer a localhost default because
+a person is there to see it and disagree; `--quick` cannot ask, and a
+credentials file naming a Vault that nothing said to use behaves like a working
+configuration until the first decrypt. The refusal names every variable that is
+missing, not the first.
+
+### No local key is written for a non-local provider
+
+A key generated "for" a secret manager is a second key that nothing reads, and
+it would be the one in `.env` that a later `panda generate` does not know
+about. `--skip-key-gen` therefore has nothing to suppress on this path.
+
+### Submodule pin moves to `panda-spec` v4
+
+The tag that carries `cli-flags.md` and the tenth interop section.
+
+### `--keystore` is gone
+
+This SDK was the only one with the flag, under two names. On `init` it was an
+alias for `--provider`; on `generate` it was a provider override that *also*
+forced the non-interactive path, because that path was chosen with
+`options.yes || options.keystore`. Two names for one concept is two definitions
+of it, and `cli-flags.md` pins one.
+
+### Eight options were read that were never declared
+
+`setupVaultProvider` and `setupInfisicalProvider` read `options.vaultUrl`,
+`options.vaultToken`, `options.vaultMount`, `options.infisicalSiteUrl` and four
+more. None of them was registered with commander, so every one of those reads
+was `undefined` and fell through to the environment. The code said the flag
+existed; the definition said it did not. The reads are gone and the environment
+is required instead of defaulted.
+
+### `.panda` is no longer created before the token gate
+
+It was the first thing quick mode did, so a refused token left an empty
+`.panda` behind — a project that looks initialised to anything that only checks
+for the directory, and is not. The other three SDKs write nothing when they
+refuse, and this now matches.
 
 ## What 0.5.1 fixes
 

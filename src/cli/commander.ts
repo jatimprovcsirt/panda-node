@@ -14,16 +14,139 @@ import { runConfigCommand } from './commands/config';
 import { runDeinitCommand } from './commands/deinit';
 
 /**
+ * The provider names `--provider` accepts.
+ *
+ * Exported so the tests can name them rather than write them out again. A test
+ * that restates a rule asserts its own copy of it — which is how the token
+ * pattern's second copy in this repository survived a release.
+ */
+export const PROVIDERS = ['local', 'vault', 'infisical'];
+
+/**
+ * The environment variables each provider is configured from on the
+ * non-interactive path. These are the names VaultKeyProvider,
+ * InfisicalKeyProvider and CLAUDE.md's environment reference already use.
+ */
+export const VAULT_REQUIRED_ENV = ['PANDA_VAULT_URL'];
+export const VAULT_APPROLE_ENV = ['PANDA_VAULT_ROLE_ID', 'PANDA_VAULT_SECRET_ID'];
+export const INFISICAL_REQUIRED_ENV = [
+  'PANDA_INFISICAL_CLIENT_ID',
+  'PANDA_INFISICAL_CLIENT_SECRET',
+  'PANDA_INFISICAL_PROJECT_ID',
+];
+
+/** Thrown when the environment does not describe the provider that was asked for. */
+export class ProviderConfigError extends Error {}
+
+function envAllSet(names: string[]): boolean {
+  return names.every((name) => !!process.env[name]);
+}
+
+/**
+ * Throw naming every variable that is missing, not only the first. A refusal
+ * that says "Vault is not configured" sends the reader to the documentation;
+ * one that lists the variables sends them to their shell.
+ */
+function requireEnv(names: string[], provider: string): void {
+  const absent = names.filter((name) => !process.env[name]);
+  if (absent.length === 0) return;
+
+  const verb = absent.length > 1 ? 'These are' : 'It is';
+  throw new ProviderConfigError(
+    `--provider ${provider} needs ${absent.join(' and ')} to be set. ${verb} read ` +
+      `from the environment: this path cannot ask, and defaulting would write a ` +
+      `configuration nobody chose.`
+  );
+}
+
+/**
+ * Fill a non-local provider's settings from the environment, or throw.
+ *
+ * Fail-closed, as the token gate on this path is. The wizard may offer
+ * http://127.0.0.1:8200 as a default because a person is there to see it and
+ * disagree; `--quick` cannot ask.
+ */
+export function applyProviderEnv(credentials: any, provider: string): void {
+  if (provider === 'vault') {
+    requireEnv(VAULT_REQUIRED_ENV, provider);
+
+    let method = process.env.PANDA_VAULT_AUTH_METHOD;
+    if (!method) {
+      // Inferred where it is unambiguous. Demanding the variable when the
+      // caller has already answered the question by setting the role and
+      // secret, or a token, is the difference between a quick init that works
+      // and one that argues.
+      if (envAllSet(VAULT_APPROLE_ENV)) method = 'approle';
+      else if (process.env.PANDA_VAULT_TOKEN) method = 'token';
+      else requireEnv(['PANDA_VAULT_AUTH_METHOD'], provider);
+    }
+
+    if (method !== 'approle' && method !== 'token') {
+      throw new ProviderConfigError(
+        `PANDA_VAULT_AUTH_METHOD must be 'approle' or 'token', not '${method}'.`
+      );
+    }
+
+    credentials.vaultUrl = process.env.PANDA_VAULT_URL;
+    credentials.vaultAuthMethod = method;
+    credentials.vaultMount = process.env.PANDA_VAULT_MOUNT_PATH || 'secret';
+
+    if (method === 'approle') {
+      requireEnv(VAULT_APPROLE_ENV, provider);
+      credentials.vaultRoleId = process.env.PANDA_VAULT_ROLE_ID;
+      credentials.vaultSecretId = process.env.PANDA_VAULT_SECRET_ID;
+      credentials.vaultTokenTTL = process.env.PANDA_VAULT_TOKEN_TTL || '3600';
+    } else {
+      requireEnv(['PANDA_VAULT_TOKEN'], provider);
+      credentials.vaultToken = process.env.PANDA_VAULT_TOKEN;
+    }
+
+    console.log("✓ Vault provider configured");
+    console.log(`  URL: ${credentials.vaultUrl}`);
+    console.log(`  Mount: ${credentials.vaultMount}`);
+    console.log("  Note: Keys will be retrieved from Vault at runtime.");
+    console.log("  Ensure your secret is stored at: " + credentials.vaultMount + "/" + credentials.defaultKid);
+    return;
+  }
+
+  requireEnv(INFISICAL_REQUIRED_ENV, provider);
+
+  // The site URL and the cache TTL do have safe defaults — one is the public
+  // service, the other a duration — so unlike the credentials above they are
+  // defaulted rather than demanded.
+  credentials.infisicalSiteUrl =
+    process.env.PANDA_INFISICAL_SITE_URL || 'https://app.infisical.com';
+  credentials.infisicalClientId = process.env.PANDA_INFISICAL_CLIENT_ID;
+  credentials.infisicalClientSecret = process.env.PANDA_INFISICAL_CLIENT_SECRET;
+  credentials.infisicalProjectId = process.env.PANDA_INFISICAL_PROJECT_ID;
+  credentials.infisicalEnvironment = process.env.PANDA_INFISICAL_ENVIRONMENT || 'dev';
+  credentials.infisicalCacheTTL = process.env.PANDA_INFISICAL_CACHE_TTL || '300';
+
+  console.log("✓ Infisical provider configured");
+  console.log(`  Site URL: ${credentials.infisicalSiteUrl}`);
+  console.log(`  Project ID: ${credentials.infisicalProjectId}`);
+  console.log(`  Environment: ${credentials.infisicalEnvironment}`);
+  console.log("  Note: Keys will be retrieved from Infisical at runtime.");
+  console.log("  Use 'panda generate' to create keys in Infisical.");
+}
+
+/**
  * Quick init mode (non-interactive setup)
  */
 async function runQuickInit(options: any): Promise<void> {
   const token = options.token || process.env.PANDA_ACCESS_TOKEN;
   const provider = options.provider || 'local';
 
-  // Create .panda directory structure first
-  const { createPandaDirectory } = require('./commands/utils/panda-dir');
-  createPandaDirectory();
+  if (!PROVIDERS.includes(provider)) {
+    console.error(`Unknown provider: ${provider}. Expected one of: ${PROVIDERS.join(', ')}`);
+    process.exit(1);
+  }
 
+  // The .panda directory is created after both gates, not before them. It
+  // used to be the first thing this function did, so a refused token left an
+  // empty .panda behind — a project that looks initialised to anything that
+  // only checks for the directory, and does not. panda-php, panda-go and
+  // panda-py all write nothing when they refuse, and this now matches.
   try {
     await validateToken(token || '');
   } catch (err: any) {
@@ -45,25 +168,25 @@ async function runQuickInit(options: any): Promise<void> {
     defaultKid: kid
   };
 
-  // Provider-specific setup
-  switch (provider) {
-    case 'local':
-      if (!options.skipKeyGen) {
-        await setupLocalProvider(kid, options);
-      }
-      break;
+  // Provider configuration is resolved before anything is written, so a short
+  // environment stops init with nothing left behind.
+  try {
+    if (provider !== 'local') {
+      applyProviderEnv(credentials, provider);
+    }
+  } catch (err: any) {
+    console.error(`Provider configuration failed: ${err.message}`);
+    process.exit(1);
+  }
 
-    case 'vault':
-      await setupVaultProvider(kid, options, credentials);
-      break;
+  const { createPandaDirectory } = require('./commands/utils/panda-dir');
+  createPandaDirectory();
 
-    case 'infisical':
-      await setupInfisicalProvider(kid, options, credentials);
-      break;
-
-    default:
-      console.error(`Unknown provider: ${provider}`);
-      process.exit(1);
+  // Only for the local provider: a key generated "for" Vault or Infisical is a
+  // second key that nothing reads. panda-php, panda-go and panda-py generate
+  // none on this path either.
+  if (provider === 'local' && !options.skipKeyGen) {
+    await setupLocalProvider(kid, options);
   }
 
   // Save credentials
@@ -99,36 +222,6 @@ async function setupLocalProvider(kid: string, options: any): Promise<void> {
   console.log("  Keep this key secret and secure!");
   console.log("  # From here on, this application never contacts the portal again for");
   console.log("  # encrypt/decrypt/mask, rotate, or migrate — Section 9, Section 14.");
-}
-
-async function setupVaultProvider(kid: string, options: any, credentials: any): Promise<void> {
-  credentials.vaultUrl = options.vaultUrl || process.env.PANDA_VAULT_URL || 'http://127.0.0.1:8200';
-  credentials.vaultToken = options.vaultToken || process.env.PANDA_VAULT_TOKEN;
-  credentials.vaultMount = options.vaultMount || process.env.PANDA_VAULT_MOUNT_PATH || 'secret';
-
-  console.log("✓ Vault provider configured");
-  console.log(`  URL: ${credentials.vaultUrl}`);
-  console.log(`  Mount: ${credentials.vaultMount}`);
-  console.log(`  Default Key ID: ${kid}`);
-  console.log("  Note: Keys will be retrieved from Vault at runtime.");
-  console.log("  Ensure your secret is stored at: " + credentials.vaultMount + "/" + kid);
-}
-
-async function setupInfisicalProvider(kid: string, options: any, credentials: any): Promise<void> {
-  credentials.infisicalSiteUrl = options.infisicalSiteUrl || process.env.PANDA_INFISICAL_SITE_URL || 'https://app.infisical.com';
-  credentials.infisicalClientId = options.infisicalClientId || process.env.PANDA_INFISICAL_CLIENT_ID;
-  credentials.infisicalClientSecret = options.infisicalClientSecret || process.env.PANDA_INFISICAL_CLIENT_SECRET;
-  credentials.infisicalProjectId = options.infisicalProjectId || process.env.PANDA_INFISICAL_PROJECT_ID;
-  credentials.infisicalEnvironment = options.infisicalEnvironment || process.env.PANDA_INFISICAL_ENVIRONMENT || 'dev';
-  credentials.infisicalCacheTTL = options.infisicalCacheTTL || process.env.PANDA_INFISICAL_CACHE_TTL || '300';
-
-  console.log("✓ Infisical provider configured");
-  console.log(`  Site URL: ${credentials.infisicalSiteUrl}`);
-  console.log(`  Project ID: ${credentials.infisicalProjectId}`);
-  console.log(`  Environment: ${credentials.infisicalEnvironment}`);
-  console.log(`  Default Key ID: ${kid}`);
-  console.log("  Note: Keys will be retrieved from Infisical at runtime.");
-  console.log("  Use 'panda generate' to create keys in Infisical.");
 }
 
 /**
@@ -168,25 +261,29 @@ export function runCli(argv: string[]) {
     // commander rejected it as an unknown option, so the advice pointed at a
     // command that could not be run.
     .option('--reinit', 'Replace an existing configuration', false)
-    .option('-q, --quick', 'Skip wizard, use quick setup with local provider', false)
+    .option('-q, --quick', 'Skip the wizard; non-interactive setup', false)
     // panda-php, panda-go and panda-py all have this. Without it there is no
     // way to prepare a project for a key that is provisioned later — which is
     // the shape of a deployment where the key arrives from a secret manager
     // and the token gate still has to be satisfied first.
     .option('--skip-key-gen', 'Skip first key generation', false)
-    .option('-p, --provider <type>', 'Key provider type: local, vault, or infisical (non-interactive)')
-    .option('--keystore <type>', 'Alias for --provider (non-interactive)')
+    .option(
+      '-p, --provider <type>',
+      'Key provider: local, vault, or infisical. Implies non-interactive, as --quick does.'
+    )
     .action(async (options) => {
-      // Determine if non-interactive mode
-      // Non-interactive if: quick flag OR provider/keystore explicitly set OR token provided with kid
+      // Determine if non-interactive mode.
+      //
+      // Naming a provider implies the non-interactive path for the same reason
+      // `--quick` does: it is an instruction the wizard cannot accept, since
+      // it would ask the question anyway and discard the answer.
       const isNonInteractive = options.quick ||
                                options.provider ||
-                               options.keystore ||
                                (options.token && options.kid && options.kid !== 'default-key');
 
       if (isNonInteractive) {
         // Non-interactive mode
-        const provider = options.keystore || options.provider || 'local';
+        const provider = options.provider || 'local';
         await runQuickInit({ ...options, provider });
       } else {
         // Wizard mode. The token goes with it: the wizard used to be called
@@ -205,7 +302,10 @@ export function runCli(argv: string[]) {
     .description('Generate a new encryption key (interactive or specify kid)')
     .option('-d, --description <text>', 'Key description')
     .option('-y, --yes', 'Skip confirmation prompts (non-interactive)', false)
-    .option('--keystore <type>', 'Override key provider: local, vault, or infisical')
+    .option(
+      '-p, --provider <type>',
+      "Provider to store the key in. Defaults to the one 'init' recorded."
+    )
     .action(async (kid, options) => {
       const exitCode = await runGenerateCommand(kid, options);
       process.exit(exitCode);

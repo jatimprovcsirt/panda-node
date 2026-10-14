@@ -269,3 +269,172 @@ describe('CLI Init Command', () => {
     });
   });
 });
+
+
+/**
+ * `--provider` on the non-interactive path.
+ *
+ * panda-node was the only SDK with this flag, and the only one with a second
+ * name for it: `--keystore`. The alias goes, and `--provider` is pinned on
+ * both commands in panda-spec/cli-flags.md, checked by verify_interop.js.
+ *
+ * The variable names come from the implementation's own exported lists rather
+ * than being written out again. A test that restates a rule asserts its own
+ * copy of it — how the token pattern's second copy survived a release.
+ */
+describe('Provider Selection', () => {
+  let testDir: string;
+  const pandaExe = path.join(process.cwd(), 'dist', 'cli', 'index.js');
+  const DEMO_TOKEN = 'panda_demo_76d08573d453cdbdb4bf5704d13f8f54d57cd3c47c9b4be2';
+
+  // Imported from the build rather than restated, so a change to the lists
+  // cannot leave these tests asserting yesterday's names.
+  const commander = require(path.join(process.cwd(), 'dist', 'cli', 'commander.js'));
+  const ALL_PROVIDER_VARS = [
+    ...commander.VAULT_REQUIRED_ENV,
+    ...commander.VAULT_APPROLE_ENV,
+    ...commander.INFISICAL_REQUIRED_ENV,
+    'PANDA_VAULT_AUTH_METHOD',
+    'PANDA_VAULT_TOKEN',
+    'PANDA_VAULT_MOUNT_PATH',
+    'PANDA_VAULT_TOKEN_TTL',
+    'PANDA_INFISICAL_SITE_URL',
+    'PANDA_INFISICAL_ENVIRONMENT',
+    'PANDA_INFISICAL_CACHE_TTL',
+  ];
+
+  beforeEach(() => {
+    testDir = path.join(
+      process.cwd(),
+      'test-provider-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9)
+    );
+    fs.mkdirSync(testDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(testDir)) {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    }
+  });
+
+  const env = (overrides: Record<string, string> = {}): NodeJS.ProcessEnv => {
+    const clean: NodeJS.ProcessEnv = { ...process.env };
+    for (const name of ALL_PROVIDER_VARS) delete clean[name];
+    return { ...clean, ...overrides };
+  };
+
+  const run = (
+    args: string[],
+    environment: NodeJS.ProcessEnv = env()
+  ): Promise<{ exitCode: number; output: string }> =>
+    new Promise((resolve) => {
+      let output = '';
+      const proc = spawn('node', [pandaExe, ...args], {
+        cwd: testDir,
+        env: environment,
+        timeout: 15000,
+      });
+      proc.stdout.on('data', (d) => (output += d.toString()));
+      proc.stderr.on('data', (d) => (output += d.toString()));
+      proc.on('close', (code) => resolve({ exitCode: code || 0, output }));
+      proc.on('error', (err) => resolve({ exitCode: 1, output: err.message }));
+    });
+
+  // Two files, split by whether a leak would cost anything: the secrets go to
+  // `.panda/credentials` and the rest to `.panda/config.json`. The provider is
+  // therefore in the second, and `vaultSecretId` is not.
+  const providerConfig = (): any =>
+    JSON.parse(fs.readFileSync(path.join(testDir, '.panda', 'config.json'), 'utf8')).provider;
+
+  const secrets = (): any =>
+    JSON.parse(fs.readFileSync(path.join(testDir, '.panda', 'credentials'), 'utf8'));
+
+  it('should offer --provider on init and generate', async () => {
+    const init = await run(['init', '--help']);
+    const generate = await run(['generate', '--help']);
+
+    expect(init.output).toContain('--provider');
+    expect(generate.output).toContain('--provider');
+  });
+
+  it('should no longer offer --keystore, the second name for the same thing', async () => {
+    const init = await run(['init', '--help']);
+    const generate = await run(['generate', '--help']);
+
+    expect(init.output).not.toContain('--keystore');
+    expect(generate.output).not.toContain('--keystore');
+  });
+
+  it('should fail closed when vault is named with no environment', async () => {
+    const result = await run(['init', '--quick', '--token', DEMO_TOKEN, '--provider', 'vault']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain('PANDA_VAULT_URL');
+    expect(fs.existsSync(path.join(testDir, '.panda'))).toBe(false);
+  });
+
+  it('should record an AppRole configuration', async () => {
+    const result = await run(
+      ['init', '--quick', '--token', DEMO_TOKEN, '--kid', 'k1', '--provider', 'vault'],
+      env({
+        PANDA_VAULT_URL: 'https://vault.example:8200',
+        PANDA_VAULT_ROLE_ID: 'role-1',
+        PANDA_VAULT_SECRET_ID: 'secret-1',
+      })
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(providerConfig().type).toBe('vault');
+    expect(providerConfig().config.vaultUrl).toBe('https://vault.example:8200');
+    expect(providerConfig().config.vaultAuthMethod).toBe('approle');
+    expect(providerConfig().config.vaultRoleId).toBe('role-1');
+  });
+
+  it('should infer token authentication from a lone token', async () => {
+    const result = await run(
+      ['init', '--quick', '--token', DEMO_TOKEN, '--provider', 'vault'],
+      env({ PANDA_VAULT_URL: 'https://vault.example:8200', PANDA_VAULT_TOKEN: 'hvs.token' })
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(providerConfig().config.vaultAuthMethod).toBe('token');
+    // The token itself is a secret, so it is in the other file.
+    expect(secrets().vaultToken).toBe('hvs.token');
+  });
+
+  it('should name every missing Infisical variable', async () => {
+    const result = await run(['init', '--quick', '--token', DEMO_TOKEN, '--provider', 'infisical']);
+
+    expect(result.exitCode).toBe(1);
+    for (const name of commander.INFISICAL_REQUIRED_ENV) {
+      expect(result.output).toContain(name);
+    }
+    expect(fs.existsSync(path.join(testDir, '.panda'))).toBe(false);
+  });
+
+  it('should write no local key for a non-local provider', async () => {
+    await run(
+      ['init', '--quick', '--token', DEMO_TOKEN, '--kid', 'k1', '--provider', 'vault'],
+      env({ PANDA_VAULT_URL: 'https://vault.example:8200', PANDA_VAULT_TOKEN: 'hvs.token' })
+    );
+
+    const envFile = path.join(testDir, '.env');
+    const written = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8') : '';
+    expect(written).not.toContain('PANDA_KEY_');
+  });
+
+  it('should refuse an unknown provider', async () => {
+    const result = await run(['init', '--quick', '--token', DEMO_TOKEN, '--provider', 'kerberos']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain('kerberos');
+  });
+
+  it('should still mean local when no provider is given', async () => {
+    const result = await run(['init', '--quick', '--token', DEMO_TOKEN, '--kid', 'k1']);
+
+    expect(result.exitCode).toBe(0);
+    expect(providerConfig().type).toBe('local');
+    expect(fs.readFileSync(path.join(testDir, '.env'), 'utf8')).toContain('PANDA_KEY_K1=');
+  });
+});
