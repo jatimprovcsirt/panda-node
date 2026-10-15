@@ -68,7 +68,7 @@ Setelah menjalankan perintah ini, wizard akan:
 1. Memvalidasi token Anda
 2. Meminta Anda memasukkan Key Identifier (KID) untuk kunci pertama
 3. Menghasilkan kunci 256-bit yang aman secara kriptografis secara **lokal**
-4. Menambahkan kunci dalam format base64 ke file `.env` Anda (misal: `PANDA_KEY_OPD_DUKCAPIL_KEY_1=...`)
+4. Menambahkan kunci dalam format base64 ke file `.env` Anda (misal: `PANDA_KEY_NIK_KEY_1=...`)
 
 > [!NOTE]
 > Untuk pengembangan lokal, Anda dapat menggunakan demo token bawaan:
@@ -79,7 +79,7 @@ Setelah menjalankan perintah ini, wizard akan:
 Perintah `init` melakukan hal berikut:
 1. Memvalidasi format token Anda.
 2. Menghasilkan kunci 256-bit yang aman secara kriptografis secara **lokal** (token tidak pernah menerima kunci ini).
-3. Secara otomatis menambahkan kunci dalam format base64 ke file `.env` Anda (misal: `PANDA_KEY_OPD_DUKCAPIL_KEY_1=...`).
+3. Secara otomatis menambahkan kunci dalam format base64 ke file `.env` Anda (misal: `PANDA_KEY_NIK_KEY_1=...`).
 
 ### Langkah 3: Restart Terminal/Server (Penting!)
 
@@ -94,10 +94,10 @@ Jika aplikasi Anda membutuhkan lebih dari satu kunci (misalnya untuk bidang data
 
 ```bash
 # Kunci kedua: untuk field nomor HP
-npx panda generate opd-dukcapil-key-2
+npx panda generate nik-key-2
 
 # Kunci untuk blind index (suffix -idx wajib dipisah)
-npx panda generate opd-dukcapil-key-1-idx
+npx panda generate nik-key-1-idx
 ```
 
 > [!NOTE]
@@ -109,14 +109,14 @@ Untuk merotasi kunci pada KID yang sudah ada, gunakan `rotate-key`. Perintah ini
 
 ```bash
 # Rotasi: buat kunci baru dan set sebagai default KID aktif
-npx panda rotate-key --new-kid opd-dukcapil-key-2
+npx panda rotate-key --new-kid nik-key-2
 ```
 
 ### Menghapus Kunci (Crypto-Shred)
 
 ```bash
 # Hapus kunci secara permanen (HATI-HATI: data yang dienkripsi dengan kunci ini tidak bisa didekripsi lagi!)
-npx panda shred opd-dukcapil-key-old
+npx panda shred nik-key-old
 ```
 
 ---
@@ -204,7 +204,7 @@ const cipher = new FieldCipher(keyProvider);
 
 ```typescript
 const rawNik = '3201012501990001';
-const kid = 'opd-dukcapil-key-1';
+const kid = 'nik-key-1';
 
 const envelope = await cipher.encrypt(rawNik, kid);
 const jsonForDatabase = envelope.toJson();
@@ -236,7 +236,7 @@ Untuk mencari data terenkripsi, simpan hash deterministik (blind index) di kolom
 import { BlindIndexer } from '@jatimprovcsirt/panda-node';
 
 // KID blind index HARUS menggunakan suffix -idx
-const blindIndexKid = 'opd-dukcapil-key-1-idx';
+const blindIndexKid = 'nik-key-1-idx';
 const blindIndexKey = keyProvider.getKey(blindIndexKid);
 
 // Saat INSERT/UPDATE: hitung blind index
@@ -269,7 +269,7 @@ app.post('/api/citizens', decryptBodyFields(cipher, ['nik', 'phone']), (req, res
 import { PandaModule } from '@jatimprovcsirt/panda-node';
 
 @Module({
-  imports: [PandaModule.forRoot({ defaultKid: 'opd-dukcapil-key-1' })],
+  imports: [PandaModule.forRoot({ defaultKid: 'nik-key-1' })],
 })
 export class AppModule {}
 ```
@@ -310,14 +310,14 @@ Lihat Bagian 1 di atas.
 
 ```bash
 # Konversi semua plaintext ke encrypted envelope (resumable jika terputus)
-npx panda migrate citizens nik opd-dukcapil-key-1
+npx panda migrate citizens nik nik-key-1
 
 # Opsi tambahan:
 # --batch-size <n>  : jumlah baris per chunk (default: 100)
 # --delay <ms>      : jeda antar chunk (default: 100ms)
 # --pk <col>        : nama kolom primary key (default: id)
 # --dry-run         : estimasi scope tanpa mengubah data
-npx panda migrate citizens nik opd-dukcapil-key-1 --batch-size 500 --dry-run
+npx panda migrate citizens nik nik-key-1 --batch-size 500 --dry-run
 ```
 
 Perintah ini menyimpan checkpoint di tabel `panda_migration_state`, jadi aman jika terputus dan bisa dilanjutkan.
@@ -329,7 +329,7 @@ import { BlindIndexer, Envelope, LocalKeyProvider } from '@jatimprovcsirt/panda-
 
 const keyProvider = new LocalKeyProvider();
 const cipher = new FieldCipher(keyProvider);
-const blindIndexKey = keyProvider.getKey('opd-dukcapil-key-1-idx');
+const blindIndexKey = keyProvider.getKey('nik-key-1-idx');
 
 // Proses semua baris yang belum punya blind index
 const rows = await db.query('SELECT id, nik FROM citizens WHERE nik_bidx IS NULL');
@@ -507,5 +507,5 @@ attribution.
 
 Previously MIT. Apache-2.0 is equally permissive and adds an express patent
 grant and a trademark clause, which MIT is silent on — it matters here because
-this is cryptographic software that other agencies and vendors are expected to
+this is cryptographic software that other organizations and vendors are expected to
 embed in their own systems.
