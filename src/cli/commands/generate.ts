@@ -3,6 +3,7 @@ import * as readline from 'readline';
 import { readCredentials } from './utils/credentials';
 import { addKeyToMetadata } from './utils/panda-dir';
 import { appendEnv, PROVIDERS } from '../commander';
+import { newEncryptionKey } from '../../telemetry/report';
 import * as path from 'path';
 
 /**
@@ -58,7 +59,7 @@ export async function runGenerateCommand(kid: string, options: any): Promise<num
 
   console.log(`\nGenerating key for KID: ${kid}`);
 
-  const keyBytes = crypto.randomBytes(32);
+  const keyBytes = newEncryptionKey();
   const keyBase64 = keyBytes.toString('base64');
 
   // The override, applied here rather than inside the store branches below.

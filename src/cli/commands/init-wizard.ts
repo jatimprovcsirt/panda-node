@@ -2,6 +2,7 @@ import * as readline from 'readline';
 import { writeCredentials, readCredentials, PandaCredentials } from './utils/credentials';
 import { createPandaDirectory } from './utils/panda-dir';
 import { appendEnv } from '../commander';
+import { newEncryptionKey } from '../../telemetry/report';
 import { TOKEN_PATTERN } from '../../crypto/tokenValidator';
 import * as crypto from 'crypto';
 import * as path from 'path';
@@ -160,7 +161,7 @@ export async function runInitWizard(presetToken?: string, reinit = false): Promi
 
   if (credentials.provider === 'local') {
     // Generate local key
-    const keyBytes = crypto.randomBytes(32);
+    const keyBytes = newEncryptionKey();
     const keyBase64 = keyBytes.toString('base64');
     const normalizedKid = defaultKid.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
     const envVarName = `PANDA_KEY_${normalizedKid}`;

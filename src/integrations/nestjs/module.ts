@@ -5,7 +5,13 @@ import type { InfisicalConfig } from '../../crypto/keys';
 
 export interface PandaModuleOptions {
   defaultKid?: string;
-  providerToken?: string;
+  /**
+   * `providerToken` was removed. It existed only to hand the cipher a token
+   * for telemetry, and telemetry never ran — the endpoint was a placeholder
+   * hostname and nothing ever set the environment variable behind it. An
+   * option that is accepted and discarded is worse than one that is absent.
+   * The token now comes from `.panda/credentials`, where `panda init` puts it.
+   */
   keyProvider?: 'local' | 'vault' | 'infisical';
   vault?: VaultConfig;
   infisical?: InfisicalConfig;
@@ -17,7 +23,7 @@ export class PandaModule {
       options.keyProvider ?? 'local',
       options.vault ? { ...options.vault } : options.infisical ? { ...options.infisical } : undefined
     );
-    const cipher = new FieldCipher(keyProvider, undefined, undefined, options.providerToken);
+    const cipher = new FieldCipher(keyProvider);
     const service = new PandaService(cipher);
 
     const keyProviderSymbol = Symbol('KeyProvider');

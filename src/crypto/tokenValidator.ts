@@ -1,9 +1,15 @@
 import { InvalidTokenError } from '../errors';
+import { PORTAL_BASE_URL } from '../telemetry/payload';
 
 /**
  * The production portal validation endpoint.
+ *
+ * Derived from the one base URL in `telemetry/payload.ts` rather than written
+ * out again. This constant and the telemetry one were two definitions of the
+ * same host, and they came apart — telemetry pointed at a domain that does not
+ * exist while this one worked.
  */
-const DEFAULT_VALIDATION_URL = 'https://csirt.jatimprov.go.id/panda/api/v1/tokens/validate';
+const DEFAULT_VALIDATION_URL = `${PORTAL_BASE_URL}/tokens/validate`;
 
 /**
  * Get the validation URL from environment or default.

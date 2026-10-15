@@ -12,6 +12,7 @@ import { runGenerateCommand } from './commands/generate';
 import { runStatusCommand } from './commands/status';
 import { runConfigCommand } from './commands/config';
 import { runDeinitCommand } from './commands/deinit';
+import { newEncryptionKey } from '../telemetry/report';
 
 /**
  * The provider names `--provider` accepts.
@@ -205,7 +206,7 @@ async function setupLocalProvider(kid: string, options: any): Promise<void> {
   const normalizedKid = kid.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
   const envVarName = `PANDA_KEY_${normalizedKid}`;
 
-  const keyBytes = crypto.randomBytes(32);
+  const keyBytes = newEncryptionKey();
   const keyBase64 = keyBytes.toString('base64');
 
   const envPath = path.join(process.cwd(), '.env');
@@ -220,8 +221,10 @@ async function setupLocalProvider(kid: string, options: any): Promise<void> {
   console.log(`  Generated key for KID: ${kid}`);
   console.log(`  Variable written to .env: ${envVarName}`);
   console.log("  Keep this key secret and secure!");
-  console.log("  # From here on, this application never contacts the portal again for");
-  console.log("  # encrypt/decrypt/mask, rotate, or migrate — Section 9, Section 14.");
+  console.log("  # From here on, encryption, decryption and masking happen entirely");
+  console.log("  # inside this application. The portal never receives plaintext, ciphertext,");
+  console.log("  # key material or field values, and holds no key. What the SDK reports is");
+  console.log("  # usage counts and its version, and those reports fail silently.");
 }
 
 /**
@@ -347,7 +350,7 @@ export function runCli(argv: string[]) {
       const normalizedKid = newKid.replace(/[^A-Za-z0-9]/g, '_').toUpperCase();
       const envVarName = `PANDA_KEY_${normalizedKid}`;
 
-      const keyBytes = crypto.randomBytes(32);
+      const keyBytes = newEncryptionKey();
       const keyBase64 = keyBytes.toString('base64');
 
       const envPath = path.join(process.cwd(), '.env');

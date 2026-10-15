@@ -18,6 +18,7 @@ import * as path from 'path';
 
 import { packageVersion } from '../../src/version';
 import { TelemetryClient } from '../../src/telemetry/telemetry';
+import { count, resetForTests } from '../../src/telemetry/counters';
 
 const pkgVersion = require('../../package.json').version;
 
@@ -25,12 +26,21 @@ const pkgVersion = require('../../package.json').version;
 // to be created with vi.hoisted to exist by the time the factory runs.
 const telemetry = vi.hoisted(() => {
   const written: string[] = [];
-  const request = () => ({
-    on: () => {},
-    write: (chunk: string) => written.push(chunk),
-    end: () => {},
-    destroy: () => {},
-  });
+  // The callback is answered, and answered with a 202: flush() waits for the
+  // response because the counters may only be cleared once the portal has
+  // acknowledged them. A mock that never calls back would hang the await
+  // rather than fail it.
+  const request = (...args: any[]) => {
+    const callback = args.find((a) => typeof a === 'function');
+    return {
+      on: () => {},
+      write: (chunk: string) => written.push(chunk),
+      end: () => {
+        if (callback) callback({ statusCode: 202, resume: () => {} });
+      },
+      destroy: () => {},
+    };
+  };
   return { written, request };
 });
 
@@ -73,26 +83,33 @@ describe('Version reporting', () => {
       // The client is disabled by this flag, and an inherited value would
       // make the test pass by sending nothing at all.
       delete process.env.PANDA_TELEMETRY_DISABLED;
+      // The token comes from .panda/credentials in ordinary use. The
+      // environment fallback is what keeps this test off the filesystem.
+      process.env.PANDA_PORTAL_TOKEN = 'panda_live_' + 'a'.repeat(48);
+      resetForTests();
     });
 
-    it('reports the declared version when the caller does not pass one', async () => {
-      // `cipher.ts` calls `report(token, key)` with two arguments, so this
-      // default is what actually ships — it is not a branch that never runs.
-      // It said 0.1.0 for four minor releases.
-      const client = new TelemetryClient();
-      await client.report('panda_live_' + 'a'.repeat(48), Buffer.alloc(32));
+    it('reports the declared version in a usage report', async () => {
+      // The version is read at report time rather than passed in by the
+      // caller. When it was a default argument on a call the cipher made, it
+      // said 0.1.0 for four minor releases and nothing noticed.
+      count('encrypts');
+      await new TelemetryClient().flush();
 
       expect(telemetry.written).toHaveLength(1);
       const body = JSON.parse(telemetry.written[0]);
       expect(body.sdkVersion).toBe(pkgVersion);
       expect(body.language).toBe('node');
+      expect(body.eventType).toBe('usage');
     });
 
-    it('still honours an explicit version', async () => {
-      const client = new TelemetryClient();
-      await client.report('panda_live_' + 'a'.repeat(48), Buffer.alloc(32), '9.9.9');
+    it('reports the declared version in a key report', async () => {
+      await new TelemetryClient().reportKey(Buffer.alloc(32));
 
-      expect(JSON.parse(telemetry.written[0]).sdkVersion).toBe('9.9.9');
+      expect(telemetry.written).toHaveLength(1);
+      const body = JSON.parse(telemetry.written[0]);
+      expect(body.sdkVersion).toBe(pkgVersion);
+      expect(body.eventType).toBe('key');
     });
   });
 });
